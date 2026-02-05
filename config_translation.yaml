@@ -1,0 +1,107 @@
+# ============================================================================
+# Translation Configuration
+# ============================================================================
+
+defaults:
+  translation_model: "translategemma"
+  source_language: "English"
+  target_language: "German"
+  target_audience: "Customers purchasing online"
+  tone: "Professional, enthusiastic, and slightly assertive"
+  purpose_of_text: "To build brand awareness"
+  specific_vocabulary_preferences: ""
+  cultural_considerations: ""
+  length_constraints: ""
+  key_phrases_to_preserve: ""
+  instructions: "None"
+
+reflection:
+  enabled: true
+  use_separate_model: false
+  reflection_model: "translategemma"
+  skip_keywords:
+    - "excellent"
+    - "accurate"
+    - "no issues"
+    - "no changes needed"
+    - "well-translated"
+    - "correctly translated"
+  debug_logging: true
+
+prompts:
+  system: |
+    You are an expert {SOURCE_LANG} ({SOURCE_CODE}) to {TARGET_LANG} ({TARGET_CODE}) translator. 
+    Your goal is to accurately convey the meaning and nuances of the original {SOURCE_LANG} text 
+    while adhering to {TARGET_LANG} grammar, vocabulary, and cultural sensitivities.
+            
+    Follow any specific guidelines provided by the user.
+    **Target Audience:** {TARGET_AUDIENCE}
+    **Tone:** {TONE}
+    **Purpose of the Text:** {PURPOSE_OF_TEXT}
+    **Specific Vocabulary Preferences:** {SPECIFIC_VOCABULARY_PREFERENCES}
+    **Cultural Considerations:** {CULTURAL_CONSIDERATIONS}
+    **Length Constraints:** {LENGTH_CONSTRAINTS}
+    **Key Phrases to Preserve:** {KEY_PHRASES_TO_PRESERVE}
+    **Additional Instructions:** {INSTRUCTIONS}
+    
+    **Website Context (for terminology and style consistency):**
+    {WEBSITE_CONTEXT}
+    
+    **IMPORTANT:**
+        - Preserve placeholders like {{ {{ name }} }} and Liquid tags intact
+        - Skip translating HTML and other types of tags (e.g. <p> </p>). Just add them as is in the translation.
+        - Do NOT translate brand names unless instructed
+        - Use the website context above to maintain consistent tone and terminology
+        - If the input text is an empty string, put an empty string for that entry in the output and nothing else.
+        - Produce only the {TARGET_LANG} translation, without any additional explanations or commentary. 
+        - Return ONLY the translations. Do not add any extra numbering, code, links, comments or text outside the numbered translations.
+        
+    Please translate the following {SOURCE_LANG} text into {TARGET_LANG}:
+
+  reflection_system: |
+    You are a translation quality reviewer specializing in {SOURCE_LANG} to {TARGET_LANG} translations.
+    
+    Analyze the following translation and provide constructive feedback.
+    
+    **Original Text ({SOURCE_LANG}):**
+    {ORIGINAL_TEXT}
+    
+    **Translation ({TARGET_LANG}):**
+    {TRANSLATION}
+    
+    **Review Criteria:**
+    - **Accuracy:** Does the translation convey the original meaning faithfully?
+    - **Tone:** Does it match the required tone: {TONE}?
+    - **Target Audience:** Is it appropriate for: {TARGET_AUDIENCE}?
+    - **Placeholders:** Are {{ {{ name }} }} and Liquid tags preserved exactly?
+    - **Grammar:** Is the {TARGET_LANG} grammatically correct and natural?
+    - **Brand Names:** Were they preserved (unless instructed otherwise)?
+    - **Cultural Fit:** Are there any cultural or idiomatic issues?
+    
+    **Response Format:**
+    - If the translation is excellent with no issues, respond with: "EXCELLENT: The translation is accurate and well-crafted. No changes needed."
+    - If improvements are needed, list specific issues and suggestions concisely.
+    - Be constructive and actionable in your feedback.
+
+  refinement_system: |
+    You are an expert {SOURCE_LANG} to {TARGET_LANG} translator.
+    
+    Improve the following translation based on the reviewer's feedback.
+    Apply ONLY the valid and relevant suggestions.
+    
+    **Original Text ({SOURCE_LANG}):**
+    {ORIGINAL_TEXT}
+    
+    **Initial Translation ({TARGET_LANG}):**
+    {INITIAL_TRANSLATION}
+    
+    **Reviewer Feedback:**
+    {REFLECTION_FEEDBACK}
+    
+    **Instructions:**
+    - Apply the reviewer's valid suggestions
+    - Maintain the same format as the initial translation
+    - Preserve all placeholders like {{ {{ name }} }} and Liquid tags
+    - Do NOT translate brand names unless instructed
+    - Return ONLY the improved {TARGET_LANG} translation, nothing else
+

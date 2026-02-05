@@ -1,0 +1,17 @@
+# ============================================================================
+# Context Configuration
+# ============================================================================
+
+context_sources:
+  enabled: true
+  embedding_model: "embeddinggemma"
+  chunk_size: 1000
+  chunk_overlap: 50
+  top_k: 3
+  max_context_length: 2000
+  
+  websites:
+    - name: "Biking News, Tips and Tricks"
+      url: "https://bikeradar.com/"
+      description: "The world's best biking advice"
+

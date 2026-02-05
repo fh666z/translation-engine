@@ -1,0 +1,14 @@
+# ============================================================================
+# Translation Backend - Main Configuration (API/Engine)
+# ============================================================================
+
+ollama:
+  model: "translategemma"
+  base_url: "http://localhost:11434"
+  temperature: 0.7
+  streaming: true
+
+app:
+  name: "Translation Engine API"
+  show_emojis: true
+

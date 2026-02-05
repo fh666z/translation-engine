@@ -1,0 +1,20 @@
+# Core LLM engine dependencies (mirrored from llm-translation-demoapp)
+langchain>=0.3.0
+langchain-ollama>=0.2.0
+langchain-core>=0.3.0
+
+pyyaml>=6.0
+
+# Context-aware translation (in-memory vector search)
+crawl4ai>=0.3.0
+faiss-cpu>=1.7.0
+numpy>=1.24.0
+
+# API server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Optional extras for development and debugging
+httpx>=0.27.0          # For testing HTTP endpoints
+python-dotenv>=1.0.0   # For environment-based configuration (optional)
+
