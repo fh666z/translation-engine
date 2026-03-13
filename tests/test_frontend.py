@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from api.routes_frontend import router as frontend_router
 from translation_engine.config.models import ContextConfig, TranslationConfig
 from translation_engine.domain.models import TranslationResult
+from translation_engine.errors import ProviderUnavailableError
 
 
 @dataclass
@@ -33,6 +34,13 @@ class FakePipeline:
         )
 
 
+class FailingPipeline(FakePipeline):
+    def execute(self, request):
+        raise ProviderUnavailableError(
+            "Ollama is unreachable at http://localhost:11434. Start Ollama with 'ollama serve' or switch provider_type to 'vertex_ai'."
+        )
+
+
 @dataclass
 class FakeEngine:
     config: FakeConfig
@@ -41,6 +49,10 @@ class FakeEngine:
 
 
 def create_test_client() -> TestClient:
+    return create_test_client_with_pipeline(FakePipeline())
+
+
+def create_test_client_with_pipeline(pipeline) -> TestClient:
     app = FastAPI()
     app.include_router(frontend_router)
     app.state.engine = FakeEngine(
@@ -67,7 +79,7 @@ def create_test_client() -> TestClient:
                 websites=[],
             ),
         ),
-        pipeline=FakePipeline(),
+        pipeline=pipeline,
     )
     return TestClient(app)
 
@@ -89,4 +101,22 @@ def test_frontend_submission_uses_submitted_languages_in_result_badge():
 
     assert response.status_code == 200
     assert "English → German" in response.text
+
+
+def test_frontend_shows_user_friendly_provider_error_message():
+    client = create_test_client_with_pipeline(FailingPipeline())
+
+    response = client.post(
+        "/translate",
+        data={
+            "text": "Hello world",
+            "source_language": "English",
+            "target_language": "German",
+            "tone": "Friendly",
+            "purpose_of_text": "Marketing",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Ollama is unreachable" in response.text
 

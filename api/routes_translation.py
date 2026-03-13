@@ -1,6 +1,6 @@
 """Translation-related API routes."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from api.schemas import (
     TranslateRequest,
@@ -12,6 +12,7 @@ from translation_engine.domain.models import (
     TranslationOptions,
     TranslationRequest as DomainTranslationRequest,
 )
+from translation_engine.errors import ProviderUnavailableError
 from translation_engine.services.pipeline import TranslationPipeline
 
 from .dependencies import get_pipeline
@@ -42,7 +43,10 @@ def translate(
             or (payload.source_language or "").lower() == "auto",
         ),
     )
-    result = pipeline.execute(request)
+    try:
+        result = pipeline.execute(request)
+    except ProviderUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return TranslateResponse(
         source_text=result.source_text,
         initial_translation=result.initial_translation,
@@ -61,19 +65,22 @@ def translate_simple(
     """
     Perform a simple translation without reflection.
     """
-    translation = pipeline.translate_simple(
-        payload.text,
-        use_context=payload.use_context,
-        options=TranslationOptions(
-            source_language=payload.source_language or "Auto-detect",
-            target_language=payload.target_language or pipeline.translator.config.target_language,
-            tone=payload.tone or pipeline.translator.config.tone,
-            purpose_of_text=payload.purpose_of_text or pipeline.translator.config.purpose_of_text,
-            target_audience=pipeline.translator.config.target_audience,
-            auto_detect_source_language=payload.auto_detect_source_language
-            or (payload.source_language or "").lower() == "auto",
-        ),
-    )
+    try:
+        translation = pipeline.translate_simple(
+            payload.text,
+            use_context=payload.use_context,
+            options=TranslationOptions(
+                source_language=payload.source_language or "Auto-detect",
+                target_language=payload.target_language or pipeline.translator.config.target_language,
+                tone=payload.tone or pipeline.translator.config.tone,
+                purpose_of_text=payload.purpose_of_text or pipeline.translator.config.purpose_of_text,
+                target_audience=pipeline.translator.config.target_audience,
+                auto_detect_source_language=payload.auto_detect_source_language
+                or (payload.source_language or "").lower() == "auto",
+            ),
+        )
+    except ProviderUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     # translate_simple internally uses context if available
     context_used = pipeline.context_ready and payload.use_context
     return TranslateSimpleResponse(

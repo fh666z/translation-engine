@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from translation_engine.context_profiles import ContextProfile
 from translation_engine.domain.models import TranslationOptions, TranslationRequest
 from translation_engine.engine import Engine
+from translation_engine.errors import ProviderUnavailableError
 
 from .dependencies import get_engine
 
@@ -74,6 +75,7 @@ def submit_form(
     websites = [w for w in [website1, website2, website3] if w]
 
     context_notice = None
+    error_message = None
     if use_context and websites and engine.context_profile_store is not None:
         profile: ContextProfile
         if context_profile_id:
@@ -132,7 +134,11 @@ def submit_form(
         options=translation_options,
         context_profile_id=context_profile_id,
     )
-    result = engine.pipeline.execute(request_obj)
+    result = None
+    try:
+        result = engine.pipeline.execute(request_obj)
+    except ProviderUnavailableError as exc:
+        error_message = str(exc)
 
     translation_cfg = engine.config.translation
     context_cfg = engine.config.context
@@ -146,6 +152,7 @@ def submit_form(
             "language_options": LANGUAGE_OPTIONS,
             "result": result,
             "context_notice": context_notice,
+            "error_message": error_message,
             "form": {
                 "text": text,
                 "source_language": source_language,

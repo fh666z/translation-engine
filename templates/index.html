@@ -156,6 +156,14 @@
         border: 1px solid rgba(59, 130, 246, 0.35);
         color: #bfdbfe;
       }
+      .error {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid rgba(239, 68, 68, 0.35);
+        color: #fecaca;
+      }
     </style>
   </head>
   <body>
@@ -306,6 +314,10 @@
 
         {% if context_notice %}
         <div class="notice">{{ context_notice }}</div>
+        {% endif %}
+
+        {% if error_message %}
+        <div class="error">{{ error_message }}</div>
         {% endif %}
 
         {% if result %}

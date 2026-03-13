@@ -10,6 +10,7 @@ from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from translation_engine.config.models import OllamaConfig
+from translation_engine.errors import ProviderUnavailableError
 from translation_engine.providers.base import EmbeddingProvider, LLMProvider
 
 
@@ -69,7 +70,15 @@ class OllamaLLMProvider(LLMProvider):
             The generated response text.
         """
         langchain_messages = self._convert_messages(messages)
-        response = self._client_sync.invoke(langchain_messages)
+        try:
+            response = self._client_sync.invoke(langchain_messages)
+        except Exception as exc:
+            raise ProviderUnavailableError(
+                "Ollama is unreachable at "
+                f"{self.config.base_url}. Start Ollama with 'ollama serve', "
+                f"make sure model '{self.config.model}' is available, or switch "
+                "provider_type to 'vertex_ai'."
+            ) from exc
         return response.content
     
     def stream(self, messages: list[dict]) -> Iterator[str]:
@@ -83,8 +92,16 @@ class OllamaLLMProvider(LLMProvider):
             String chunks of the response.
         """
         langchain_messages = self._convert_messages(messages)
-        for chunk in self._client.stream(langchain_messages):
-            yield chunk.content
+        try:
+            for chunk in self._client.stream(langchain_messages):
+                yield chunk.content
+        except Exception as exc:
+            raise ProviderUnavailableError(
+                "Ollama is unreachable at "
+                f"{self.config.base_url}. Start Ollama with 'ollama serve', "
+                f"make sure model '{self.config.model}' is available, or switch "
+                "provider_type to 'vertex_ai'."
+            ) from exc
 
 
 class OllamaEmbeddingProvider(EmbeddingProvider):

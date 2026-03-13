@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from api.routes_translation import router as translation_router
 from translation_engine.domain.models import TranslationResult
+from translation_engine.errors import ProviderUnavailableError
 
 
 class CapturingPipeline:
@@ -43,6 +44,13 @@ class CapturingPipeline:
         return "Hallo"
 
 
+class ErrorPipeline(CapturingPipeline):
+    def execute(self, request):
+        raise ProviderUnavailableError(
+            "Ollama is unreachable at http://localhost:11434. Start Ollama with 'ollama serve' or switch provider_type to 'vertex_ai'."
+        )
+
+
 @dataclass
 class FakeEngine:
     pipeline: CapturingPipeline
@@ -79,4 +87,25 @@ def test_translate_route_passes_runtime_translation_options_into_domain_request(
     assert options.target_language == "German"
     assert options.tone == "Friendly"
     assert options.purpose_of_text == "Marketing"
+
+
+def test_translate_route_returns_503_with_provider_error_details():
+    pipeline = ErrorPipeline()
+    client = create_test_client(pipeline)
+
+    response = client.post(
+        "/api/v1/translate",
+        json={
+            "text": "Hello world",
+            "source_language": "English",
+            "target_language": "German",
+            "tone": "Friendly",
+            "purpose_of_text": "Marketing",
+            "use_context": False,
+            "use_reflection": True,
+        },
+    )
+
+    assert response.status_code == 503
+    assert "Ollama is unreachable" in response.json()["detail"]
 
