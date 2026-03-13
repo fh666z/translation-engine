@@ -6,13 +6,14 @@ translation pipeline.
 """
 
 import logging
+from dataclasses import replace
 
 from translation_engine.config.models import (
     PromptsConfig,
     ReflectionConfig,
     TranslationConfig,
 )
-from translation_engine.domain.models import ReflectionResult
+from translation_engine.domain.models import ReflectionResult, TranslationOptions
 from translation_engine.providers.base import LLMProvider
 
 
@@ -55,7 +56,33 @@ class Reflector:
         """Check if reflection is enabled in configuration."""
         return self.reflection_config.enabled
     
-    def _build_reflection_prompt(self, original: str, translation: str) -> str:
+    def _resolve_translation_config(
+        self,
+        options: TranslationOptions | None = None,
+    ) -> TranslationConfig:
+        """Apply request-level translation overrides to reflection prompts."""
+        if options is None:
+            return self.translation_config
+
+        source_language = options.source_language or self.translation_config.source_language
+        if options.auto_detect_source_language or source_language.lower() == "auto":
+            source_language = "Auto-detect"
+
+        return replace(
+            self.translation_config,
+            source_language=source_language,
+            target_language=options.target_language or self.translation_config.target_language,
+            tone=options.tone or self.translation_config.tone,
+            purpose_of_text=options.purpose_of_text or self.translation_config.purpose_of_text,
+            target_audience=options.target_audience or self.translation_config.target_audience,
+        )
+    
+    def _build_reflection_prompt(
+        self,
+        original: str,
+        translation: str,
+        options: TranslationOptions | None = None,
+    ) -> str:
         """
         Build the reflection system prompt.
         
@@ -66,13 +93,14 @@ class Reflector:
         Returns:
             Formatted reflection prompt.
         """
+        resolved = self._resolve_translation_config(options)
         return self.prompts.reflection_system.format(
-            SOURCE_LANG=self.translation_config.source_language,
-            TARGET_LANG=self.translation_config.target_language,
+            SOURCE_LANG=resolved.source_language,
+            TARGET_LANG=resolved.target_language,
             ORIGINAL_TEXT=original,
             TRANSLATION=translation,
-            TONE=self.translation_config.tone,
-            TARGET_AUDIENCE=self.translation_config.target_audience,
+            TONE=resolved.tone,
+            TARGET_AUDIENCE=resolved.target_audience,
         )
     
     def _build_refinement_prompt(
@@ -80,6 +108,7 @@ class Reflector:
         original: str,
         translation: str,
         feedback: str,
+        options: TranslationOptions | None = None,
     ) -> str:
         """
         Build the refinement system prompt.
@@ -92,9 +121,10 @@ class Reflector:
         Returns:
             Formatted refinement prompt.
         """
+        resolved = self._resolve_translation_config(options)
         return self.prompts.refinement_system.format(
-            SOURCE_LANG=self.translation_config.source_language,
-            TARGET_LANG=self.translation_config.target_language,
+            SOURCE_LANG=resolved.source_language,
+            TARGET_LANG=resolved.target_language,
             ORIGINAL_TEXT=original,
             INITIAL_TRANSLATION=translation,
             REFLECTION_FEEDBACK=feedback,
@@ -116,7 +146,12 @@ class Reflector:
                 return True
         return False
     
-    def reflect(self, original: str, translation: str) -> ReflectionResult:
+    def reflect(
+        self,
+        original: str,
+        translation: str,
+        options: TranslationOptions | None = None,
+    ) -> ReflectionResult:
         """
         Critique a translation and determine if refinement is needed.
         
@@ -135,7 +170,7 @@ class Reflector:
             logger.debug("Original text: %s...", original[:100])
             logger.debug("Translation to review: %s...", translation[:100])
         
-        system_prompt = self._build_reflection_prompt(original, translation)
+        system_prompt = self._build_reflection_prompt(original, translation, options)
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": "Please review this translation and provide feedback."},
@@ -151,7 +186,13 @@ class Reflector:
         
         return ReflectionResult(feedback=feedback, is_excellent=is_excellent)
     
-    def refine(self, original: str, translation: str, feedback: str) -> str:
+    def refine(
+        self,
+        original: str,
+        translation: str,
+        feedback: str,
+        options: TranslationOptions | None = None,
+    ) -> str:
         """
         Improve a translation based on reflection feedback.
         
@@ -170,7 +211,7 @@ class Reflector:
             logger.debug("REFINEMENT STEP - Improving translation")
             logger.debug("Feedback to apply: %s...", feedback[:200])
         
-        system_prompt = self._build_refinement_prompt(original, translation, feedback)
+        system_prompt = self._build_refinement_prompt(original, translation, feedback, options)
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": "Please provide the improved translation."},

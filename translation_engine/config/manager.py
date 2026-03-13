@@ -14,8 +14,10 @@ from translation_engine.config.models import (
     ContextConfig,
     OllamaConfig,
     PromptsConfig,
+    ProviderType,
     ReflectionConfig,
     TranslationConfig,
+    VertexAIConfig,
 )
 
 
@@ -43,11 +45,13 @@ class ConfigManager:
         
         # Configuration instances (populated by load_all)
         self._ollama: Optional[OllamaConfig] = None
+        self._vertex_ai: Optional[VertexAIConfig] = None
         self._app: Optional[AppConfig] = None
         self._translation: Optional[TranslationConfig] = None
         self._reflection: Optional[ReflectionConfig] = None
         self._context: Optional[ContextConfig] = None
         self._prompts: Optional[PromptsConfig] = None
+        self._provider_type: ProviderType = "ollama"
         
         # Raw config data for reference
         self._raw_main: dict = {}
@@ -61,15 +65,22 @@ class ConfigManager:
         self._load_context_config()
     
     def _load_main_config(self) -> None:
-        """Load config.yaml (Ollama and app settings)."""
+        """Load config.yaml (LLM provider, Ollama, Vertex AI and app settings)."""
         config_file = self.config_dir / "config.yaml"
         if not config_file.exists():
             raise FileNotFoundError(f"Configuration file not found: {config_file}")
         
         with open(config_file, "r", encoding="utf-8") as f:
-            self._raw_main = yaml.safe_load(f)
+            self._raw_main = yaml.safe_load(f) or {}
         
-        ollama_data = self._raw_main.get("ollama", {})
+        # Provider selection
+        provider_type = self._raw_main.get("provider_type", "ollama")
+        if provider_type not in ("ollama", "vertex_ai"):
+            raise ValueError(f"Unsupported provider_type '{provider_type}' in config.yaml")
+        self._provider_type = provider_type  # type: ignore[assignment]
+        
+        # Ollama settings (used when provider_type == 'ollama' or for local dev)
+        ollama_data = self._raw_main.get("ollama", {}) or {}
         self._ollama = OllamaConfig(
             model=ollama_data.get("model", "translategemma"),
             base_url=ollama_data.get("base_url", "http://localhost:11434"),
@@ -77,7 +88,25 @@ class ConfigManager:
             streaming=ollama_data.get("streaming", True),
         )
         
-        app_data = self._raw_main.get("app", {})
+        # Vertex AI settings (used when provider_type == 'vertex_ai')
+        vertex_data = self._raw_main.get("vertex_ai", {}) or {}
+        if provider_type == "vertex_ai":
+            project_id = vertex_data.get("project_id")
+            location = vertex_data.get("location")
+            model_id = vertex_data.get("model_id")
+            if not (project_id and location and model_id):
+                raise ValueError(
+                    "vertex_ai.project_id, vertex_ai.location and vertex_ai.model_id "
+                    "must be set in config.yaml when provider_type is 'vertex_ai'."
+                )
+            self._vertex_ai = VertexAIConfig(
+                project_id=project_id,
+                location=location,
+                model_id=model_id,
+                embedding_model_id=vertex_data.get("embedding_model_id"),
+            )
+        
+        app_data = self._raw_main.get("app", {}) or {}
         self._app = AppConfig(
             name=app_data.get("name", "Translation Backend"),
             show_emojis=app_data.get("show_emojis", True),
@@ -153,11 +182,23 @@ class ConfigManager:
         return self._ollama
     
     @property
+    def vertex_ai(self) -> VertexAIConfig:
+        """Get Vertex AI configuration."""
+        if self._vertex_ai is None:
+            raise RuntimeError("Vertex AI configuration not loaded or provider_type is not 'vertex_ai'.")
+        return self._vertex_ai
+    
+    @property
     def app(self) -> AppConfig:
         """Get application configuration."""
         if self._app is None:
             raise RuntimeError("Configuration not loaded. Call load_all() first.")
         return self._app
+    
+    @property
+    def provider_type(self) -> ProviderType:
+        """Get the configured LLM provider type."""
+        return self._provider_type
     
     @property
     def translation(self) -> TranslationConfig:

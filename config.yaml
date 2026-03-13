@@ -2,11 +2,20 @@
 # Translation Backend - Main Configuration (API/Engine)
 # ============================================================================
 
+provider_type: "ollama"  # "ollama" for local dev, "vertex_ai" for GCP
+
 ollama:
   model: "translategemma"
   base_url: "http://localhost:11434"
   temperature: 0.7
   streaming: true
+
+vertex_ai:
+  project_id: "YOUR_GCP_PROJECT_ID"
+  location: "YOUR_VERTEX_REGION"
+  model_id: "gemini-1.5-flash"
+  # Optional separate embedding model for context indexing (Vertex AI embeddings)
+  embedding_model_id: "text-embedding-004"
 
 app:
   name: "Translation Engine API"

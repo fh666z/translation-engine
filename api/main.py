@@ -5,6 +5,7 @@ import logging
 from fastapi import FastAPI
 
 from api.routes_context import router as context_router
+from api.routes_frontend import router as frontend_router
 from api.routes_health import router as health_router
 from api.routes_translation import router as translation_router
 from translation_engine.engine import create_engine
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
         logger.info("Translation engine initialized")
 
     # Routers
+    app.include_router(frontend_router)
     app.include_router(translation_router)
     app.include_router(context_router)
     app.include_router(health_router)

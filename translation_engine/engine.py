@@ -11,9 +11,14 @@ from pathlib import Path
 from typing import Optional
 
 from translation_engine.config.manager import ConfigManager
-from translation_engine.config.models import OllamaConfig
+from translation_engine.config.models import OllamaConfig, VertexAIConfig
+from translation_engine.providers.base import LLMProvider
 from translation_engine.providers.context import FAISSContextProvider
 from translation_engine.providers.ollama import OllamaEmbeddingProvider, OllamaLLMProvider
+from translation_engine.providers.vertex_ai import (
+    VertexAIEmbeddingProvider,
+    VertexAILLMProvider,
+)
 from translation_engine.services.pipeline import TranslationPipeline
 from translation_engine.services.reflector import Reflector
 from translation_engine.services.translator import Translator
@@ -23,14 +28,23 @@ from translation_engine.services.translator import Translator
 class Engine:
     """Container for the configured translation engine components."""
     config: ConfigManager
-    llm: OllamaLLMProvider
+    llm: LLMProvider
     pipeline: TranslationPipeline
     context_provider: Optional[FAISSContextProvider] = None
 
 
-def _create_main_llm(ollama_config: OllamaConfig) -> OllamaLLMProvider:
-    """Create the primary LLM provider for translation."""
-    return OllamaLLMProvider(ollama_config)
+def _create_main_llm(config: ConfigManager) -> LLMProvider:
+    """
+    Create the primary LLM provider for translation based on configuration.
+    
+    Supports both local Ollama and Google Cloud Vertex AI backends.
+    """
+    if config.provider_type == "vertex_ai":
+        vertex_cfg: VertexAIConfig = config.vertex_ai
+        return VertexAILLMProvider(vertex_cfg)
+    # Default / local development: Ollama
+    ollama_cfg: OllamaConfig = config.ollama
+    return OllamaLLMProvider(ollama_cfg)
 
 
 def _create_context_provider(
@@ -39,11 +53,15 @@ def _create_context_provider(
     """Create the context provider if context is enabled."""
     if not config.context.enabled:
         return None
-    
-    embedding_provider = OllamaEmbeddingProvider(
-        model=config.context.embedding_model,
-        base_url=config.ollama.base_url,
-    )
+
+    # Choose embedding backend based on provider_type.
+    if config.provider_type == "vertex_ai":
+        embedding_provider = VertexAIEmbeddingProvider(config.vertex_ai)
+    else:
+        embedding_provider = OllamaEmbeddingProvider(
+            model=config.context.embedding_model,
+            base_url=config.ollama.base_url,
+        )
     return FAISSContextProvider(
         config=config.context,
         embedding_provider=embedding_provider,
@@ -52,22 +70,34 @@ def _create_context_provider(
 
 def _create_reflector(
     config: ConfigManager,
-    main_llm: OllamaLLMProvider,
+    main_llm: LLMProvider,
 ) -> Optional[Reflector]:
     """Create the reflector service if reflection is enabled."""
     if not config.reflection.enabled:
         return None
     
+    reflection_llm: LLMProvider
     # Use separate model for reflection if configured
     if config.reflection.use_separate_model:
-        reflection_llm = OllamaLLMProvider(
-            OllamaConfig(
-                model=config.reflection.reflection_model,
-                base_url=config.ollama.base_url,
-                temperature=config.ollama.temperature,
-                streaming=False,
+        if config.provider_type == "vertex_ai":
+            # Use the same Vertex project/location but a different model id.
+            vertex_base: VertexAIConfig = config.vertex_ai
+            reflection_vertex_cfg = VertexAIConfig(
+                project_id=vertex_base.project_id,
+                location=vertex_base.location,
+                model_id=config.reflection.reflection_model or vertex_base.model_id,
+                embedding_model_id=vertex_base.embedding_model_id,
             )
-        )
+            reflection_llm = VertexAILLMProvider(reflection_vertex_cfg)
+        else:
+            reflection_llm = OllamaLLMProvider(
+                OllamaConfig(
+                    model=config.reflection.reflection_model,
+                    base_url=config.ollama.base_url,
+                    temperature=config.ollama.temperature,
+                    streaming=False,
+                )
+            )
     else:
         reflection_llm = main_llm
     
@@ -95,7 +125,7 @@ def create_engine(config_dir: Optional[Path] = None) -> Engine:
     config.load_all()
     
     # Create main LLM provider
-    llm = _create_main_llm(config.ollama)
+    llm = _create_main_llm(config)
     
     # Create context provider (if enabled)
     context_provider = _create_context_provider(config)

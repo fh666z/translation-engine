@@ -43,6 +43,9 @@ class FAISSContextProvider(ContextProvider):
         """
         self.config = config
         self.embeddings = embedding_provider
+        # Start with the websites defined in configuration; this list can be
+        # updated at runtime to reflect user-provided sources.
+        self._websites: list[dict] = list(config.websites)
         
         # Index state
         self._index: Optional[faiss.IndexFlatL2] = None
@@ -153,7 +156,7 @@ class FAISSContextProvider(ContextProvider):
             logger.info("Index already built, skipping")
             return True
         
-        websites = self.config.websites
+        websites = self._websites
         if not websites:
             logger.warning("No websites configured in context_sources")
             return False
@@ -295,4 +298,21 @@ class FAISSContextProvider(ContextProvider):
             total_length += len(entry) + 2  # +2 for separator
         
         return "\n\n".join(context_parts)
+
+    # ----- Runtime configuration -------------------------------------------------
+
+    def set_websites(self, websites: list[dict]) -> None:
+        """
+        Replace the list of websites used for indexing.
+
+        The next call to build_index(force=True) will rebuild the FAISS index
+        from these websites.
+        """
+        self._websites = websites
+        # Mark index as not built so callers know it must be rebuilt.
+        self._is_built = False
+        self._index = None
+        self._chunks = []
+        self._chunk_sources = []
+
 

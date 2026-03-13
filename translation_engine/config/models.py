@@ -6,7 +6,7 @@ loaded from YAML files.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 
 
 @dataclass
@@ -23,6 +23,23 @@ class AppConfig:
     """Application-level configuration settings."""
     name: str
     show_emojis: bool
+
+
+@dataclass
+class VertexAIConfig:
+    """
+    Vertex AI configuration settings for generative models and embeddings.
+    
+    This configuration is used when the engine is running against
+    Google Cloud Vertex AI instead of a local Ollama server.
+    """
+    project_id: str
+    location: str
+    model_id: str
+    embedding_model_id: Optional[str] = None
+
+
+ProviderType = Literal["ollama", "vertex_ai"]
 
 
 @dataclass

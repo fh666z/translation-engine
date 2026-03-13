@@ -8,7 +8,10 @@ from api.schemas import (
     TranslateSimpleRequest,
     TranslateSimpleResponse,
 )
-from translation_engine.domain.models import TranslationRequest as DomainTranslationRequest
+from translation_engine.domain.models import (
+    TranslationOptions,
+    TranslationRequest as DomainTranslationRequest,
+)
 from translation_engine.services.pipeline import TranslationPipeline
 
 from .dependencies import get_pipeline
@@ -29,6 +32,15 @@ def translate(
         text=payload.text,
         use_context=payload.use_context,
         use_reflection=payload.use_reflection,
+        options=TranslationOptions(
+            source_language=payload.source_language or "Auto-detect",
+            target_language=payload.target_language or pipeline.translator.config.target_language,
+            tone=payload.tone or pipeline.translator.config.tone,
+            purpose_of_text=payload.purpose_of_text or pipeline.translator.config.purpose_of_text,
+            target_audience=pipeline.translator.config.target_audience,
+            auto_detect_source_language=payload.auto_detect_source_language
+            or (payload.source_language or "").lower() == "auto",
+        ),
     )
     result = pipeline.execute(request)
     return TranslateResponse(
@@ -52,6 +64,15 @@ def translate_simple(
     translation = pipeline.translate_simple(
         payload.text,
         use_context=payload.use_context,
+        options=TranslationOptions(
+            source_language=payload.source_language or "Auto-detect",
+            target_language=payload.target_language or pipeline.translator.config.target_language,
+            tone=payload.tone or pipeline.translator.config.tone,
+            purpose_of_text=payload.purpose_of_text or pipeline.translator.config.purpose_of_text,
+            target_audience=pipeline.translator.config.target_audience,
+            auto_detect_source_language=payload.auto_detect_source_language
+            or (payload.source_language or "").lower() == "auto",
+        ),
     )
     # translate_simple internally uses context if available
     context_used = pipeline.context_ready and payload.use_context

@@ -10,6 +10,22 @@ from typing import Optional
 
 
 @dataclass
+class TranslationOptions:
+    """
+    Request-level translation options that can override YAML defaults.
+    
+    This lets the API and HTML form change languages, tone, and purpose
+    per request without mutating global configuration.
+    """
+    source_language: str
+    target_language: str
+    tone: str
+    purpose_of_text: str
+    target_audience: Optional[str] = None
+    auto_detect_source_language: bool = False
+
+
+@dataclass
 class TranslationRequest:
     """
     Request object for translation operations.
@@ -19,6 +35,7 @@ class TranslationRequest:
     text: str
     use_context: bool = True
     use_reflection: bool = True
+    options: Optional[TranslationOptions] = None
 
 
 @dataclass

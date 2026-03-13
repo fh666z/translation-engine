@@ -128,7 +128,11 @@ class TranslationPipeline:
         
         # Step 2: Initial translation
         logger.debug("Step 1: Initial translation")
-        initial_translation = self.translator.translate(request.text, context)
+        initial_translation = self.translator.translate(
+            request.text,
+            context,
+            request.options,
+        )
         
         # Step 3: Reflection and refinement if enabled
         reflection_feedback = None
@@ -137,7 +141,11 @@ class TranslationPipeline:
         
         if request.use_reflection and self.reflection_enabled:
             logger.debug("Step 2: Reflection")
-            reflection_result = self.reflector.reflect(request.text, initial_translation)
+            reflection_result = self.reflector.reflect(
+                request.text,
+                initial_translation,
+                request.options,
+            )
             reflection_feedback = reflection_result.feedback
             
             if reflection_result.is_excellent:
@@ -149,6 +157,7 @@ class TranslationPipeline:
                     request.text,
                     initial_translation,
                     reflection_feedback,
+                    request.options,
                 )
                 refinement_skipped = False
         
@@ -161,7 +170,12 @@ class TranslationPipeline:
             context_used=context_used,
         )
     
-    def translate_simple(self, text: str, use_context: bool = True) -> str:
+    def translate_simple(
+        self,
+        text: str,
+        use_context: bool = True,
+        options=None,
+    ) -> str:
         """
         Perform a simple translation without reflection.
         
@@ -178,12 +192,13 @@ class TranslationPipeline:
         if use_context and self.context_ready:
             context = self._get_context(text)
         
-        return self.translator.translate(text, context)
+        return self.translator.translate(text, context, options)
     
     def translate_stream(
         self,
         text: str,
         use_context: bool = True,
+        options=None,
     ) -> Iterator[str]:
         """
         Perform a streaming translation.
@@ -201,5 +216,5 @@ class TranslationPipeline:
         if use_context and self.context_ready:
             context = self._get_context(text)
         
-        yield from self.translator.translate_stream(text, context)
+        yield from self.translator.translate_stream(text, context, options)
 
