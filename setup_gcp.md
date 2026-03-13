@@ -7,6 +7,7 @@ The high-level architecture:
 - Cloud Run service running this FastAPI app (API + HTML frontend)
 - Vertex AI generative model (e.g. `gemini-1.5-flash` or a Gemma/TranslateGemma model)
 - Optional Vertex AI text embedding model (e.g. `text-embedding-004`) for context indexing
+- In-memory FAISS indexes per Cloud Run instance, keyed by reusable context profile IDs
 
 ---
 
@@ -214,6 +215,11 @@ You should see the translation form where you can:
 
 Submit a translation request and confirm you get a response.
 
+If you enter websites, the frontend creates or updates a **context profile**
+and starts rebuilding that profile’s FAISS index in the background. The first
+request may complete before the profile is ready, so context might not be used
+until the next request.
+
 ### 8.3 API tests
 
 Test the JSON API:
@@ -245,9 +251,54 @@ context_sources:
   websites: []
 ```
 
-### 9.2 Manage websites via API
+### 9.2 Create reusable context profiles
 
-You can update the websites used to build the context index via:
+Create a profile with up to 3 websites:
+
+```bash
+curl -X POST "${CLOUD_RUN_URL}/api/v1/context/profiles" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "websites": [
+          {"name": "Docs", "url": "https://example.com/docs"},
+          {"name": "Blog", "url": "https://example.com/blog"}
+        ]
+      }'
+```
+
+The response contains a `profile_id`.
+
+### 9.3 Rebuild a profile index
+
+```bash
+curl -X POST "${CLOUD_RUN_URL}/api/v1/context/profiles/PROFILE_ID/rebuild"
+```
+
+This schedules a rebuild in the background.
+
+### 9.4 Check readiness
+
+At the moment, the API exposes general context readiness via:
+
+```bash
+curl "${CLOUD_RUN_URL}/api/v1/context/status"
+```
+
+For production, remember:
+
+- Profile metadata is process-local in the current implementation.
+- FAISS indexes are per-container and in-memory.
+- A Cloud Run cold start or a new instance will require profile indexes to be rebuilt on that instance.
+
+### 9.5 Legacy sources endpoint
+
+The older `/api/v1/context/sources` endpoint still creates a profile and
+starts a background rebuild, but the preferred flow is:
+
+1. `POST /api/v1/context/profiles`
+2. `POST /api/v1/context/profiles/{profile_id}/rebuild`
+
+You can still update the websites used to build the context index via:
 
 ```bash
 curl -X POST "${CLOUD_RUN_URL}/api/v1/context/sources" \
@@ -266,7 +317,8 @@ This schedules an index rebuild in the background. Check status:
 curl "${CLOUD_RUN_URL}/api/v1/context/status"
 ```
 
-You should see `enabled: true`, and once ready, `ready: true` with a non-zero `chunk_count`.
+You should see `enabled: true`, and once the default index is ready, `ready: true`
+with a non-zero `chunk_count`.
 
 You can do the same via the HTML frontend by enabling **Use website context** and providing up to 3 URLs in the form.
 

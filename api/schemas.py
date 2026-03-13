@@ -54,6 +54,12 @@ class UpdateContextSourcesRequest(BaseModel):
     websites: list[ContextWebsite]
 
 
+class ContextProfileResponse(BaseModel):
+    profile_id: str
+    ready: bool = False
+    chunk_count: int | None = None
+
+
 class HealthResponse(BaseModel):
     status: str
 

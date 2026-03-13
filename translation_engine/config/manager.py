@@ -41,7 +41,7 @@ class ConfigManager:
         Args:
             config_dir: Directory containing config files. Defaults to project root.
         """
-        self.config_dir = config_dir or Path(__file__).parent.parent
+        self.config_dir = config_dir or Path(__file__).resolve().parent.parent.parent
         
         # Configuration instances (populated by load_all)
         self._ollama: Optional[OllamaConfig] = None

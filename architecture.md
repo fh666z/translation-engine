@@ -35,7 +35,11 @@ At the heart of the system is the **Engine**, which wires together configuration
     - Optional refinement
 
 - `translation_engine/domain/models.py`
-  - `TranslationRequest`, `ReflectionResult`, `TranslationResult` – internal dataclasses for pipeline inputs/outputs.
+  - `TranslationOptions`, `TranslationRequest`, `ReflectionResult`, `TranslationResult` – internal dataclasses for pipeline inputs/outputs.
+
+- `translation_engine/context_profiles.py`
+  - `ContextProfile` – reusable website set identified by `profile_id`.
+  - `InMemoryContextProfileStore` – current storage for context profiles.
 
 - `translation_engine/engine.py`
   - `create_engine()`:
@@ -71,8 +75,10 @@ The FastAPI layer lives under `api/`:
 
 - `api/routes_context.py`
   - `/api/v1/context/status` – exposes whether context is enabled/ready and the number of indexed chunks.
-  - `/api/v1/context/rebuild` – triggers a background rebuild of the context index from currently configured websites.
-  - `/api/v1/context/sources` – updates the list of websites used for the FAISS index (up to 3 URLs), then rebuilds the index in the background.
+  - `/api/v1/context/rebuild` – triggers a background rebuild of the default context index from config websites.
+  - `/api/v1/context/profiles` – creates a reusable context profile with up to 3 websites.
+  - `/api/v1/context/profiles/{profile_id}/rebuild` – triggers a background rebuild for a stored context profile.
+  - `/api/v1/context/sources` – legacy shortcut that creates a profile and rebuilds it in the background.
 
 - `api/routes_health.py`
   - `/health` – simple liveness endpoint.
@@ -81,9 +87,8 @@ The FastAPI layer lives under `api/`:
   - `GET /` – renders the main HTML form (`templates/index.html`), using defaults from `TranslationConfig` and `ContextConfig`.
   - `POST /translate` – handles form submission:
     - Reads text, language/tone/purpose fields, reflection/context toggles, and up to 3 websites.
-    - If context is enabled and websites are provided:
-      - Calls `FAISSContextProvider.set_websites()` with up to 3 URLs.
-      - Triggers `engine.pipeline.initialize_context(force=True)` to rebuild the FAISS index.
+    - Builds request-level `TranslationOptions`.
+    - If websites are provided, creates or reuses a `ContextProfile`, then triggers an asynchronous background rebuild for that profile.
     - Builds a `TranslationRequest` and calls `engine.pipeline.execute(...)`.
     - Renders the final translation and optional reflection feedback.
 
@@ -112,14 +117,13 @@ Key pieces:
 
 - `translation_engine/providers/context.py` – `FAISSContextProvider`
   - Tracks:
-    - `_websites` – list of `{name, url, description}` dicts (initially from `ContextConfig.websites`).
-    - `_chunks`, `_chunk_sources` – in-memory representations of content.
-    - `_index` – FAISS index over embeddings.
+    - A per-profile in-memory FAISS index state keyed by profile ID.
+    - Chunks and metadata per profile.
   - Methods:
-    - `build_index(force=False)` – fetches `_websites`, chunks text, computes embeddings via `EmbeddingProvider`, and builds the FAISS index.
-    - `search(query, k=None)` – runs a similarity search.
-    - `get_context(text)` – formats the top-k chunks into a context string, bounded by `max_context_length`.
-    - `set_websites(websites)` – replaces `_websites` and clears the index so the next `build_index(force=True)` uses the new sites.
+    - `build_index(force=False)` – rebuilds the default profile from config websites.
+    - `build_profile_index(profile_id, websites, force=False)` – builds a specific profile’s FAISS index.
+    - `search_profile(profile_id, query, k=None)` – runs similarity search for a specific profile.
+    - `get_profile_context(profile_id, text)` – formats profile-specific context for prompt inclusion.
 
 The **same provider** works with either:
 
@@ -156,9 +160,10 @@ flowchart TD
 Scaling behaviour:
 
 - Cloud Run can spin up multiple instances of the container as traffic grows.
-- Each instance has its own in-memory FAISS index:
-  - Initially empty; built the first time context is (re)initialized.
-  - Updated when `/api/v1/context/sources` or the HTML form modifies websites and rebuilds the index.
+- Each instance has its own in-memory FAISS cache, keyed by context profile ID:
+  - Initially empty on cold start.
+  - Rebuilt lazily or via explicit rebuild endpoints.
+  - Not shared across instances, so profile metadata may persist while the FAISS cache must be rebuilt per instance.
 
 ---
 
@@ -172,22 +177,24 @@ flowchart TD
   B --> C[TranslationPipeline.execute(request)]
 
   C --> D{Use context?}
-  D -->|yes & ready| E[FAISSContextProvider.get_context(text)]
-  D -->|no| F[context = ""]
+  D -->|yes & profile ready| E[FAISSContextProvider.get_profile_context(profileId,text)]
+  D -->|yes & default ready| F[FAISSContextProvider.get_context(text)]
+  D -->|no or not ready| G[context = ""]
 
-  E --> G[Translator.translate(text, context)]
-  F --> G[Translator.translate(text, context)]
+  E --> H[Translator.translate(text, context, options)]
+  F --> H[Translator.translate(text, context, options)]
+  G --> H[Translator.translate(text, context, options)]
 
-  G --> H{Use reflection?}
-  H -->|no| I[Result: initial == final]
-  H -->|yes| J[Reflector.reflect(original, initial)]
-  J --> K{Excellent?}
-  K -->|yes| I
-  K -->|no| L[Reflector.refine(original, initial, feedback)]
-  L --> M[Result: refined final]
+  H --> I{Use reflection?}
+  I -->|no| J[Result: initial == final]
+  I -->|yes| K[Reflector.reflect(original, initial, options)]
+  K --> L{Excellent?}
+  L -->|yes| J
+  L -->|no| M[Reflector.refine(original, initial, feedback, options)]
+  M --> N[Result: refined final]
 
-  I --> N[Return TranslationResult]
-  M --> N
+  J --> O[Return TranslationResult]
+  N --> O
 ```
 
 Each LLM call (translation, reflection, refinement, and embeddings) goes through the configured provider:

@@ -1,6 +1,6 @@
 # translation-engine
 
-LLM-based translation engine that also uses context, exposed via a FastAPI REST API and an optional HTML frontend.
+LLM-based translation engine that uses configurable prompts, optional reflection, and website-based context, exposed through a FastAPI JSON API and a server-rendered HTML frontend.
 
 ## Project structure
 
@@ -15,7 +15,7 @@ LLM-based translation engine that also uses context, exposed via a FastAPI REST 
   - `dependencies.py` – Dependencies for accessing the shared engine  
   - `schemas.py` – Pydantic request/response models  
   - `routes_translation.py` – Translation endpoints  
-  - `routes_context.py` – Context status, sources update, and rebuild endpoints  
+  - `routes_context.py` – Context status, profile creation, and rebuild endpoints  
   - `routes_health.py` – Health check endpoint  
   - `routes_frontend.py` – Simple server-rendered HTML frontend  
 - `templates/` – Jinja2 templates for the HTML frontend (mainly `index.html`)  
@@ -55,6 +55,18 @@ LLM-based translation engine that also uses context, exposed via a FastAPI REST 
 4. Open the HTML frontend:
 
    - Browser: `http://localhost:8000/`
+
+   The frontend lets you:
+
+   - Enter text to translate
+   - Choose source and target language (`Auto-detect` is supported for source language)
+   - Override tone and purpose of text per request
+   - Toggle reflection
+   - Create or reuse a website context profile with up to 3 URLs
+
+   Note: context profile rebuilding is asynchronous. If you submit new websites,
+   the first request may run without context while the profile index rebuilds in
+   the background.
 
 5. Test the API directly (examples):
 
@@ -104,6 +116,20 @@ To develop against Vertex AI instead of Ollama:
    ```
 
 4. Use the HTML frontend at `http://localhost:8000/` or the JSON API endpoints as before.
+
+## Context profiles
+
+Website context is now isolated through **context profiles** instead of one
+global mutable website list.
+
+- Create a profile via `POST /api/v1/context/profiles`
+- Rebuild a profile index via `POST /api/v1/context/profiles/{profile_id}/rebuild`
+- Check general context readiness via `GET /api/v1/context/status`
+
+This design is safer for Cloud Run because one user’s websites no longer
+overwrite another user’s context within the same container. The FAISS indexes
+are still in-memory per container, so they may need to be rebuilt after
+instance restarts or scale-to-zero events.
 
 ## Deploying to Google Cloud
 

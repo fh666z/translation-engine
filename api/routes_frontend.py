@@ -1,9 +1,10 @@
 """Server-rendered HTML frontend for the Translation Engine."""
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from translation_engine.context_profiles import ContextProfile
 from translation_engine.domain.models import TranslationOptions, TranslationRequest
 from translation_engine.engine import Engine
 
@@ -38,9 +39,9 @@ def show_form(request: Request, engine: Engine = Depends(get_engine)) -> HTMLRes
     context_cfg = engine.config.context
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "defaults": translation_cfg,
             "context_enabled": context_cfg.enabled,
             "language_options": LANGUAGE_OPTIONS,
@@ -52,6 +53,7 @@ def show_form(request: Request, engine: Engine = Depends(get_engine)) -> HTMLRes
 @router.post("/translate", response_class=HTMLResponse)
 def submit_form(
     request: Request,
+    background_tasks: BackgroundTasks,
     text: str = Form(...),
     source_language: str = Form(...),
     target_language: str = Form(...),
@@ -62,6 +64,7 @@ def submit_form(
     website1: str | None = Form(None),
     website2: str | None = Form(None),
     website3: str | None = Form(None),
+    context_profile_id: str | None = Form(None),
     engine: Engine = Depends(get_engine),
 ) -> HTMLResponse:
     """
@@ -70,20 +73,48 @@ def submit_form(
     # Collect up to 3 websites for context.
     websites = [w for w in [website1, website2, website3] if w]
 
-    if use_context and websites and engine.context_provider is not None:
-        # Update the context provider's websites and rebuild the index
-        # synchronously for simplicity.
-        from translation_engine.providers.context import FAISSContextProvider
-
-        provider = engine.context_provider
-        if isinstance(provider, FAISSContextProvider):
-            provider.set_websites(
+    context_notice = None
+    if use_context and websites and engine.context_profile_store is not None:
+        profile: ContextProfile
+        if context_profile_id:
+            existing = engine.context_profile_store.get(context_profile_id)
+            profile = (
+                engine.context_profile_store.save(
+                    ContextProfile(
+                        id=context_profile_id,
+                        websites=[
+                            {"name": url, "url": url, "description": ""}
+                            for url in websites[:3]
+                        ],
+                    )
+                )
+                if existing is not None
+                else engine.context_profile_store.create(
+                    [
+                        {"name": url, "url": url, "description": ""}
+                        for url in websites[:3]
+                    ]
+                )
+            )
+        else:
+            profile = engine.context_profile_store.create(
                 [
                     {"name": url, "url": url, "description": ""}
                     for url in websites[:3]
                 ]
             )
-            engine.pipeline.initialize_context(force=True)
+
+        context_profile_id = profile.id
+        if engine.context_provider is not None:
+            background_tasks.add_task(
+                engine.pipeline.initialize_context_profile,
+                profile,
+                True,
+            )
+            context_notice = (
+                "Context profile saved. The website index is rebuilding in the "
+                "background and may not be used until the next request."
+            )
 
     translation_options = TranslationOptions(
         source_language=source_language,
@@ -99,6 +130,7 @@ def submit_form(
         use_context=use_context,
         use_reflection=use_reflection,
         options=translation_options,
+        context_profile_id=context_profile_id,
     )
     result = engine.pipeline.execute(request_obj)
 
@@ -106,13 +138,14 @@ def submit_form(
     context_cfg = engine.config.context
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "defaults": translation_cfg,
             "context_enabled": context_cfg.enabled,
             "language_options": LANGUAGE_OPTIONS,
             "result": result,
+            "context_notice": context_notice,
             "form": {
                 "text": text,
                 "source_language": source_language,
@@ -122,6 +155,7 @@ def submit_form(
                 "use_reflection": use_reflection,
                 "use_context": use_context,
                 "websites": websites,
+                "context_profile_id": context_profile_id,
             },
         },
     )

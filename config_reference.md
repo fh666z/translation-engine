@@ -70,6 +70,14 @@ app:
   - `config.provider_type` to decide which LLM and embedding provider to instantiate.
   - `config.ollama` / `config.vertex_ai` to configure those providers.
 
+- Request-level overrides:
+  - The JSON API and HTML frontend can override:
+    - source language
+    - target language
+    - tone
+    - purpose of text
+  - These values flow into `TranslationOptions` and override the YAML defaults for that request only.
+
 ---
 
 ## `config_translation.yaml` – translation defaults and prompts
@@ -152,11 +160,12 @@ prompts:
 
 - `Translator` uses:
   - `config.translation` and `config.prompts.system` to build the main system prompt.
+  - `TranslationOptions` to override defaults per request.
 
 - `Reflector` uses:
   - `config.translation`, `config.reflection`, and `config.prompts.reflection_system` / `config.prompts.refinement_system` to build reflection/refinement prompts.
 
-- The HTML frontend currently uses `config.translation` values as **initial defaults** in the form (source/target language, tone, purpose).
+- The HTML frontend uses `config.translation` values as **initial defaults** in the form, but submitted values override them at request time.
 
 ---
 
@@ -201,12 +210,18 @@ context_sources:
   - `config.context` to construct a `FAISSContextProvider` when `enabled` is `true`.
 
 - `FAISSContextProvider`:
-  - Starts with `ContextConfig.websites` as its `_websites` list.
+  - Starts with `ContextConfig.websites` as its default profile.
+  - Maintains in-memory FAISS index state per profile ID.
   - Uses `embedding_model`/embedding provider to compute vectors.
-  - Exposes `build_index(force=False)`, `search(...)`, `get_context(text)`.
-  - Allows runtime updates via `set_websites(websites)`, which:
-    - Replaces the internal website list.
-    - Clears the index so it can be rebuilt.
+  - Exposes:
+    - `build_index(force=False)` for the default profile
+    - `build_profile_index(profile_id, websites, force=False)` for reusable profiles
+    - `get_profile_context(profile_id, text)` for profile-specific retrieval
+
+- `translation_engine/context_profiles.py`
+  - Stores reusable website sets in `ContextProfile` objects.
+  - The current implementation uses `InMemoryContextProfileStore`.
+  - Important: profile metadata is process-local today, and FAISS indexes are also in-memory per Cloud Run instance.
 
 - `TranslationPipeline`:
   - Calls `context_provider.get_context(text)` when:
@@ -229,10 +244,12 @@ context_sources:
   - Enter custom text.
   - Toggle reflection and context.
   - Provide up to 3 websites.
+  - Reuse a generated `context_profile_id` on subsequent submissions.
 
 - When context is enabled and websites are provided:
-  - Calls `FAISSContextProvider.set_websites(...)` and then
-    `engine.pipeline.initialize_context(force=True)` to rebuild the index for those sites.
+  - Creates or updates a context profile.
+  - Triggers a background rebuild for that profile.
+  - Continues the request immediately; context may not be available until the rebuild completes.
 
 ### Context API
 
@@ -240,10 +257,16 @@ context_sources:
   - Returns whether context is enabled/ready and how many chunks are indexed.
 
 - `POST /api/v1/context/rebuild`
-  - Rebuilds the index from the current website list (either from config or last updated via API/frontend).
+  - Rebuilds the default config-based index.
+
+- `POST /api/v1/context/profiles`
+  - Creates a new reusable context profile and returns a `profile_id`.
+
+- `POST /api/v1/context/profiles/{profile_id}/rebuild`
+  - Rebuilds the FAISS index for a specific reusable context profile.
 
 - `POST /api/v1/context/sources`
-  - Accepts up to 3 websites in a JSON payload and updates the provider’s website list, then rebuilds the index in the background.
+  - Legacy shortcut that creates a profile and schedules a background rebuild.
 
 ---
 
@@ -251,11 +274,11 @@ context_sources:
 
 - Use **`config.yaml`** to choose the backend (Ollama vs Vertex AI) and point to the correct project/region/model IDs for production.
 - Use **`config_translation.yaml`** to define translation defaults, reflection behaviour, and prompt templates.
-- Use **`config_context.yaml`** to configure context indexing behaviour and initial websites, with the option to override websites at runtime via the API or HTML frontend.
+- Use **`config_context.yaml`** to configure context indexing behaviour and initial default websites, with the option to create reusable runtime profiles via the API or HTML frontend.
 
 These configuration layers allow you to:
 
 - Run locally on Ollama with minimal changes.
 - Switch to Vertex AI on GCP with the same core engine code.
-- Adjust translation behaviour and context sources without modifying Python code.
+- Adjust translation behaviour per request and create reusable context profiles without modifying Python code.
 

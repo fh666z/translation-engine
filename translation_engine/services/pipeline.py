@@ -8,8 +8,10 @@ translation, reflection, and refinement.
 import logging
 from typing import Iterator, Optional
 
+from translation_engine.context_profiles import ContextProfile
 from translation_engine.domain.models import TranslationRequest, TranslationResult
 from translation_engine.providers.base import ContextProvider
+from translation_engine.providers.context import FAISSContextProvider
 from translation_engine.services.reflector import Reflector
 from translation_engine.services.translator import Translator
 
@@ -85,6 +87,27 @@ class TranslationPipeline:
         
         logger.info("Building context index...")
         return self.context_provider.build_index(force)
+
+    def initialize_context_profile(
+        self,
+        profile: ContextProfile,
+        force: bool = False,
+    ) -> bool:
+        """Build the FAISS index for a specific reusable context profile."""
+        if not self.context_enabled:
+            logger.info("Context is disabled")
+            return False
+
+        if not isinstance(self.context_provider, FAISSContextProvider):
+            logger.info("Profile-based context is unavailable for this provider")
+            return False
+
+        logger.info("Building context index for profile %s...", profile.id)
+        return self.context_provider.build_profile_index(
+            profile_id=profile.id,
+            websites=profile.websites,
+            force=force,
+        )
     
     def _get_context(self, text: str) -> str:
         """
@@ -120,8 +143,18 @@ class TranslationPipeline:
         # Step 1: Get context if enabled
         context = ""
         context_used = False
-        if request.use_context and self.context_ready:
-            context = self._get_context(request.text)
+        if request.use_context:
+            if (
+                request.context_profile_id
+                and isinstance(self.context_provider, FAISSContextProvider)
+                and self.context_provider.is_profile_ready(request.context_profile_id)
+            ):
+                context = self.context_provider.get_profile_context(
+                    request.context_profile_id,
+                    request.text,
+                )
+            elif self.context_ready:
+                context = self._get_context(request.text)
             context_used = bool(context)
             if context_used:
                 logger.debug("Using context (%d chars)", len(context))

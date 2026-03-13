@@ -7,6 +7,7 @@ for fetching and the embedding provider for vectorization.
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
 from typing import Optional
 
 import faiss
@@ -18,6 +19,20 @@ from translation_engine.providers.base import ContextProvider, EmbeddingProvider
 
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_PROFILE_ID = "__default__"
+
+
+@dataclass
+class ProfileIndexState:
+    """In-memory FAISS index state for a specific context profile."""
+
+    websites: list[dict] = field(default_factory=list)
+    index: Optional[faiss.IndexFlatL2] = None
+    chunks: list[str] = field(default_factory=list)
+    chunk_sources: list[dict] = field(default_factory=list)
+    is_built: bool = False
+    embedding_dim: Optional[int] = None
 
 
 class FAISSContextProvider(ContextProvider):
@@ -43,16 +58,12 @@ class FAISSContextProvider(ContextProvider):
         """
         self.config = config
         self.embeddings = embedding_provider
-        # Start with the websites defined in configuration; this list can be
-        # updated at runtime to reflect user-provided sources.
-        self._websites: list[dict] = list(config.websites)
-        
-        # Index state
-        self._index: Optional[faiss.IndexFlatL2] = None
-        self._chunks: list[str] = []
-        self._chunk_sources: list[dict] = []
-        self._is_built = False
-        self._embedding_dim: Optional[int] = None
+        self._profiles: dict[str, ProfileIndexState] = {
+            DEFAULT_PROFILE_ID: ProfileIndexState(websites=list(config.websites))
+        }
+
+    def _get_profile_state(self, profile_id: str = DEFAULT_PROFILE_ID) -> ProfileIndexState:
+        return self._profiles.setdefault(profile_id, ProfileIndexState())
     
     def is_enabled(self) -> bool:
         """Check if context is enabled in configuration."""
@@ -60,12 +71,21 @@ class FAISSContextProvider(ContextProvider):
     
     def is_ready(self) -> bool:
         """Check if the index has been built and is ready for queries."""
-        return self._is_built and self._index is not None
+        return self.is_profile_ready(DEFAULT_PROFILE_ID)
+
+    def is_profile_ready(self, profile_id: str) -> bool:
+        """Check if a specific profile index is built and ready."""
+        state = self._get_profile_state(profile_id)
+        return state.is_built and state.index is not None
     
     @property
     def chunk_count(self) -> int:
         """Get the number of chunks in the index."""
-        return len(self._chunks)
+        return self.get_profile_chunk_count(DEFAULT_PROFILE_ID)
+
+    def get_profile_chunk_count(self, profile_id: str) -> int:
+        """Get the number of chunks for a specific profile."""
+        return len(self._get_profile_state(profile_id).chunks)
     
     async def _fetch_website(self, url: str) -> str:
         """
@@ -138,7 +158,12 @@ class FAISSContextProvider(ContextProvider):
         
         return chunks
     
-    async def _build_index_async(self, force: bool = False) -> bool:
+    async def _build_index_async(
+        self,
+        force: bool = False,
+        profile_id: str = DEFAULT_PROFILE_ID,
+        websites: Optional[list[dict]] = None,
+    ) -> bool:
         """
         Build the FAISS index from configured websites (async).
         
@@ -152,21 +177,24 @@ class FAISSContextProvider(ContextProvider):
             logger.info("Context sources are disabled in config")
             return False
         
-        if self._is_built and not force:
+        state = self._get_profile_state(profile_id)
+        if websites is not None:
+            state.websites = websites
+
+        if state.is_built and not force:
             logger.info("Index already built, skipping")
             return True
         
-        websites = self._websites
-        if not websites:
+        if not state.websites:
             logger.warning("No websites configured in context_sources")
             return False
         
-        logger.info(f"Building context index from {len(websites)} websites...")
+        logger.info("Building context index from %d websites for profile %s...", len(state.websites), profile_id)
         
         # Fetch all websites and chunk content
         all_chunks = []
         
-        for site in websites:
+        for site in state.websites:
             url = site.get("url", "")
             name = site.get("name", url)
             description = site.get("description", "")
@@ -191,25 +219,26 @@ class FAISSContextProvider(ContextProvider):
             return False
         
         # Separate chunks and their sources
-        self._chunks = [chunk for chunk, _ in all_chunks]
-        self._chunk_sources = [source for _, source in all_chunks]
+        state.chunks = [chunk for chunk, _ in all_chunks]
+        state.chunk_sources = [source for _, source in all_chunks]
         
-        logger.info(f"Generating embeddings for {len(self._chunks)} chunks...")
+        logger.info("Generating embeddings for %d chunks...", len(state.chunks))
         
         # Generate embeddings
-        vectors = self.embeddings.embed_documents(self._chunks)
+        vectors = self.embeddings.embed_documents(state.chunks)
         embeddings_array = np.array(vectors, dtype=np.float32)
-        self._embedding_dim = embeddings_array.shape[1]
+        state.embedding_dim = embeddings_array.shape[1]
         
         # Build FAISS index
-        self._index = faiss.IndexFlatL2(self._embedding_dim)
-        self._index.add(embeddings_array)
+        state.index = faiss.IndexFlatL2(state.embedding_dim)
+        state.index.add(embeddings_array)
         
-        self._is_built = True
+        state.is_built = True
         logger.info(
-            "Context index built successfully (%d chunks, dim=%d)",
-            len(self._chunks),
-            self._embedding_dim,
+            "Context index built successfully for profile %s (%d chunks, dim=%d)",
+            profile_id,
+            len(state.chunks),
+            state.embedding_dim,
         )
         
         return True
@@ -225,6 +254,21 @@ class FAISSContextProvider(ContextProvider):
             True if index was built successfully.
         """
         return asyncio.run(self._build_index_async(force))
+
+    def build_profile_index(
+        self,
+        profile_id: str,
+        websites: list[dict],
+        force: bool = False,
+    ) -> bool:
+        """Build or rebuild the index for a specific context profile."""
+        return asyncio.run(
+            self._build_index_async(
+                force=force,
+                profile_id=profile_id,
+                websites=websites,
+            )
+        )
     
     def search(self, query: str, k: Optional[int] = None) -> list[dict]:
         """
@@ -237,30 +281,36 @@ class FAISSContextProvider(ContextProvider):
         Returns:
             List of dicts with 'chunk', 'source', and 'distance' keys.
         """
-        if not self.is_ready():
+        return self.search_profile(DEFAULT_PROFILE_ID, query, k)
+
+    def search_profile(
+        self,
+        profile_id: str,
+        query: str,
+        k: Optional[int] = None,
+    ) -> list[dict]:
+        """Search the FAISS index for a specific profile."""
+        state = self._get_profile_state(profile_id)
+        if not self.is_profile_ready(profile_id):
             return []
-        
+
         k = k or self.config.top_k
-        k = min(k, len(self._chunks))  # Don't request more than we have
-        
-        # Embed the query
+        k = min(k, len(state.chunks))
+
         query_vector = self.embeddings.embed_query(query)
         query_array = np.array([query_vector], dtype=np.float32)
-        
-        # Search the index
-        distances, indices = self._index.search(query_array, k)
-        
+        distances, indices = state.index.search(query_array, k)
+
         results = []
         for i, idx in enumerate(indices[0]):
-            if idx < len(self._chunks):
+            if idx < len(state.chunks):
                 results.append(
                     {
-                        "chunk": self._chunks[idx],
-                        "source": self._chunk_sources[idx],
+                        "chunk": state.chunks[idx],
+                        "source": state.chunk_sources[idx],
                         "distance": float(distances[0][i]),
                     }
                 )
-        
         return results
     
     def get_context(self, text: str) -> str:
@@ -273,46 +323,30 @@ class FAISSContextProvider(ContextProvider):
         Returns:
             Formatted context string to include in the prompt.
         """
-        if not self.is_ready():
+        return self.get_profile_context(DEFAULT_PROFILE_ID, text)
+
+    def get_profile_context(self, profile_id: str, text: str) -> str:
+        """Get formatted context for a specific profile."""
+        if not self.is_profile_ready(profile_id):
             return ""
-        
-        results = self.search(text)
-        
+
+        results = self.search_profile(profile_id, text)
         if not results:
             return ""
-        
-        # Format results as context
+
         context_parts = []
         total_length = 0
-        
+
         for result in results:
             chunk = result["chunk"]
             source = result["source"]
-            
-            # Check if adding this chunk would exceed the limit
             entry = f"[From: {source['name']}]\n{chunk}"
             if total_length + len(entry) > self.config.max_context_length:
                 break
-            
+
             context_parts.append(entry)
-            total_length += len(entry) + 2  # +2 for separator
-        
+            total_length += len(entry) + 2
+
         return "\n\n".join(context_parts)
-
-    # ----- Runtime configuration -------------------------------------------------
-
-    def set_websites(self, websites: list[dict]) -> None:
-        """
-        Replace the list of websites used for indexing.
-
-        The next call to build_index(force=True) will rebuild the FAISS index
-        from these websites.
-        """
-        self._websites = websites
-        # Mark index as not built so callers know it must be rebuilt.
-        self._is_built = False
-        self._index = None
-        self._chunks = []
-        self._chunk_sources = []
 
 

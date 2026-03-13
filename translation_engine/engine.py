@@ -12,6 +12,7 @@ from typing import Optional
 
 from translation_engine.config.manager import ConfigManager
 from translation_engine.config.models import OllamaConfig, VertexAIConfig
+from translation_engine.context_profiles import InMemoryContextProfileStore
 from translation_engine.providers.base import LLMProvider
 from translation_engine.providers.context import FAISSContextProvider
 from translation_engine.providers.ollama import OllamaEmbeddingProvider, OllamaLLMProvider
@@ -31,6 +32,7 @@ class Engine:
     llm: LLMProvider
     pipeline: TranslationPipeline
     context_provider: Optional[FAISSContextProvider] = None
+    context_profile_store: Optional[InMemoryContextProfileStore] = None
 
 
 def _create_main_llm(config: ConfigManager) -> LLMProvider:
@@ -151,5 +153,6 @@ def create_engine(config_dir: Optional[Path] = None) -> Engine:
         llm=llm,
         pipeline=pipeline,
         context_provider=context_provider,
+        context_profile_store=InMemoryContextProfileStore(),
     )
 

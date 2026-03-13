@@ -36,6 +36,7 @@ class TranslationRequest:
     use_context: bool = True
     use_reflection: bool = True
     options: Optional[TranslationOptions] = None
+    context_profile_id: Optional[str] = None
 
 
 @dataclass

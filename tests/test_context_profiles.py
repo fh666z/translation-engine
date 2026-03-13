@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.routes_context import router as context_router
+from translation_engine.context_profiles import InMemoryContextProfileStore
 
 
 class FakePipeline:
@@ -18,6 +19,9 @@ class FakePipeline:
     def initialize_context(self, force: bool = False) -> bool:
         return True
 
+    def initialize_context_profile(self, profile, force: bool = False) -> bool:
+        return True
+
 
 class FakeContextProvider:
     chunk_count = 0
@@ -30,6 +34,7 @@ class FakeContextProvider:
 class FakeEngine:
     pipeline: FakePipeline
     context_provider: FakeContextProvider
+    context_profile_store: InMemoryContextProfileStore
 
 
 def create_test_client() -> TestClient:
@@ -38,6 +43,7 @@ def create_test_client() -> TestClient:
     app.state.engine = FakeEngine(
         pipeline=FakePipeline(),
         context_provider=FakeContextProvider(),
+        context_profile_store=InMemoryContextProfileStore(),
     )
     return TestClient(app)
 

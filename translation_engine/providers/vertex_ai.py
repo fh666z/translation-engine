@@ -57,15 +57,32 @@ class VertexAILLMProvider(LLMProvider):
 
     def generate(self, messages: list[dict]) -> str:
         prompt = self._build_prompt(messages)
-        response = self._model.generate_content(prompt)
-        # Normalise to plain string output.
-        return response.text or ""
+        try:
+            response = self._model.generate_content(prompt)
+        except Exception as exc:
+            raise RuntimeError(f"Vertex AI generation failed: {exc}") from exc
+
+        text = getattr(response, "text", "") or ""
+        if not text.strip():
+            raise RuntimeError("Vertex AI returned an empty response")
+        return text
 
     def stream(self, messages: list[dict]) -> Iterator[str]:
         prompt = self._build_prompt(messages)
-        for chunk in self._model.generate_content(prompt, stream=True):
-            if hasattr(chunk, "text") and chunk.text:
-                yield chunk.text
+        try:
+            chunks = self._model.generate_content(prompt, stream=True)
+        except Exception as exc:
+            raise RuntimeError(f"Vertex AI generation failed: {exc}") from exc
+
+        emitted = False
+        for chunk in chunks:
+            text = getattr(chunk, "text", "") or ""
+            if text:
+                emitted = True
+                yield text
+
+        if not emitted:
+            raise RuntimeError("Vertex AI returned an empty response")
 
 
 class VertexAIEmbeddingProvider(EmbeddingProvider):
