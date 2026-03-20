@@ -205,3 +205,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+.cursor/settings.json
+.cursor/commands/pr.md
+.cursor/settings.json
