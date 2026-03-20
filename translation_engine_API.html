@@ -182,7 +182,7 @@
 </tr>
 <tr>
 <td><strong>503 Service Unavailable</strong></td>
-<td>The LLM provider is unreachable (e.g. Ollama down). Raised as <code>ProviderUnavailableError</code> from translation routes; <code>detail</code> is a human-readable string.</td>
+<td>The LLM provider is unreachable (e.g. Ollama down). Raised as <code>ProviderUnavailableError</code> from <strong><code>POST /api/v1/translate</code></strong> and <strong><code>POST /api/v1/translate/simple</code></strong> only; <code>detail</code> is a human-readable string. <strong><code>GET /api/v1/translate/languages</code></strong> does not call the LLM and does not return 503 for provider outages.</td>
 </tr>
 <tr>
 <td><strong>500 Internal Server Error</strong></td>
@@ -194,7 +194,7 @@
 <hr />
 <h2>Health</h2>
 <h3><code>GET /health</code></h3>
-<p><strong>Purpose:</strong> Liveness check. Succeeds if the app started and the engine dependency resolves (engine exists on <code>app.state</code>).</p>
+<p><strong>Purpose:</strong> Liveness check. Succeeds if startup completed and the shared <code>Engine</code> was stored on <code>app.state</code> (the handler resolves it via <code>Depends(get_engine)</code>).</p>
 <p><strong>Response model:</strong> <code>HealthResponse</code></p>
 <table>
 <thead>
@@ -231,6 +231,34 @@
 <li><strong><code>use_reflection</code>:</strong> If <code>true</code>, reflection runs only when reflection is enabled in config and a reflector is wired; otherwise the pipeline behaves as if reflection were off.</li>
 </ul>
 <p><strong>Limitation (context profiles):</strong> The domain model supports <code>context_profile_id</code>, but <strong><code>TranslateRequest</code> and <code>TranslateSimpleRequest</code> do not include this field.</strong> The JSON API therefore always uses the <strong>default</strong> context index when <code>use_context</code> is true, not a named profile. To use per-request profiles today, use the <strong>HTML form</strong> at <code>POST /translate</code> or extend the API schemas.</p>
+<hr />
+<h3><code>GET /api/v1/translate/languages</code></h3>
+<p><strong>Purpose:</strong> Return the ordered list of language labels the server suggests for <code>source_language</code> and <code>target_language</code> (same options as the HTML form). The set depends on <strong><code>defaults.translation_model</code></strong> in <code>config_translation.yaml</code> (e.g. <code>translategemma</code> uses the WMT24++ 55-language evaluation set plus <code>English</code> and <code>Auto-detect</code>). The translation endpoints still accept arbitrary strings for those fields; this endpoint is for discovery and UI dropdowns.</p>
+<p><strong>Response model:</strong> <code>SupportedLanguagesResponse</code></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>languages</code></td>
+<td>array of strings</td>
+<td>Ordered labels (e.g. <code>Auto-detect</code>, <code>English</code>, then model-specific targets).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">curl -s http://localhost:8000/api/v1/translate/languages
+</code></pre>
+<p>With <code>translation_model: translategemma</code>, the array has 57 entries (<code>Auto-detect</code>, <code>English</code>, then 55 WMT24++ targets). Example start of the response:</p>
+<pre><code class="language-json">{&quot;languages&quot;:[&quot;Auto-detect&quot;,&quot;English&quot;,&quot;Arabic (Egypt)&quot;,&quot;Arabic (Saudi Arabia)&quot;,&quot;Bengali&quot;,&quot;Bulgarian&quot;]}
+</code></pre>
+<p>Use <code>curl</code> or <code>/docs</code> to see the full list for your deployment.</p>
+<p><strong>Engine:</strong> Like <code>/health</code>, this route uses <code>get_engine</code>. If the engine was not initialized on startup, the request fails with <strong>500</strong> (<code>RuntimeError</code>), not 503.</p>
 <hr />
 <h3><code>POST /api/v1/translate</code></h3>
 <p><strong>Purpose:</strong> Full pipeline: optional context retrieval → initial translation → optional reflection → optional refinement.</p>
@@ -437,7 +465,7 @@
   -d &quot;{\&quot;text\&quot;:\&quot;Hello\&quot;,\&quot;use_context\&quot;:false}&quot;
 </code></pre>
 <hr />
-<h2>Context (JSON API)</h2>
+<h2 id="context-json-api">Context (JSON API)</h2>
 <p>Prefix: <strong><code>/api/v1/context</code></strong></p>
 <p>Context indexing uses a <strong>FAISS</strong>-backed provider when enabled in configuration. Several endpoints schedule work on a <strong>background task</strong>; they return immediately while the index rebuilds.</p>
 <p><strong>Website limit:</strong> <code>UpdateContextSourcesRequest</code> accepts a list, but <strong>only the first three</strong> entries are used (<code>payload.websites[:3]</code>).</p>
@@ -627,10 +655,11 @@
 <h2>Integration checklist for app developers</h2>
 <ol>
 <li><strong>Health:</strong> Poll <code>GET /health</code> after deploy.</li>
-<li><strong>Translate:</strong> Use <code>POST /api/v1/translate</code> for quality pipeline or <code>/simple</code> for latency.</li>
+<li><strong>Languages:</strong> Call <code>GET /api/v1/translate/languages</code> to populate source/target dropdowns (list depends on <code>defaults.translation_model</code> in <code>config_translation.yaml</code>).</li>
+<li><strong>Translate:</strong> Use <code>POST /api/v1/translate</code> for quality pipeline or <code>/api/v1/translate/simple</code> for latency.</li>
 <li><strong>Context:</strong> If you rely on website context, poll <code>GET /api/v1/context/status</code> until <code>ready</code> is true, or call rebuild and wait before expecting <code>context_used: true</code>.</li>
 <li><strong>Profiles:</strong> Use <code>POST /api/v1/context/profiles</code> + <code>POST /api/v1/context/profiles/{id}/rebuild</code> for reusable indexes; today, <strong>use those profile IDs from the HTML UI or custom server code</strong>—the public JSON translate endpoints do not accept <code>context_profile_id</code> yet.</li>
-<li><strong>Failures:</strong> Handle <strong>503</strong> on translate routes when the LLM backend is down.</li>
+<li><strong>Failures:</strong> Handle <strong>503</strong> on the translate <strong>POST</strong> endpoints when the LLM backend is down.</li>
 <li><strong>Docs:</strong> Use <code>/docs</code> to confirm schemas match your client version after upgrades.</li>
 </ol>
 <hr />
@@ -640,6 +669,7 @@
 <li><a href="api/schemas.py"><code>api/schemas.py</code></a> — request/response models  </li>
 <li><a href="api/routes_translation.py"><code>api/routes_translation.py</code></a> — translation mapping and defaults  </li>
 <li><a href="api/routes_context.py"><code>api/routes_context.py</code></a> — context and profile behavior  </li>
+<li><a href="translation_engine/supported_languages.py"><code>translation_engine/supported_languages.py</code></a> — language lists keyed by <code>translation_model</code>  </li>
 </ul>
 </article>
 </body>

@@ -66,7 +66,7 @@ These reflect the same routes and schemas as this document and are useful for tr
 | HTTP status | When |
 |-------------|------|
 | **422 Unprocessable Entity** | Request body or query fails **Pydantic** validation (wrong types, invalid URL in `ContextWebsite`, etc.). Response body follows FastAPI’s default validation error shape (`detail` array). |
-| **503 Service Unavailable** | The LLM provider is unreachable (e.g. Ollama down). Raised as `ProviderUnavailableError` from translation routes; `detail` is a human-readable string. |
+| **503 Service Unavailable** | The LLM provider is unreachable (e.g. Ollama down). Raised as `ProviderUnavailableError` from **`POST /api/v1/translate`** and **`POST /api/v1/translate/simple`** only; `detail` is a human-readable string. **`GET /api/v1/translate/languages`** does not call the LLM and does not return 503 for provider outages. |
 | **500 Internal Server Error** | Unexpected errors, including `RuntimeError` if the engine was not initialized on startup, or if context profile routes hit an uninitialized profile store (see context routes). |
 
 There is **no** custom error envelope: clients should read `detail` (string or list) from the JSON body when present.
@@ -77,7 +77,7 @@ There is **no** custom error envelope: clients should read `detail` (string or l
 
 ### `GET /health`
 
-**Purpose:** Liveness check. Succeeds if the app started and the engine dependency resolves (engine exists on `app.state`).
+**Purpose:** Liveness check. Succeeds if startup completed and the shared `Engine` was stored on `app.state` (the handler resolves it via `Depends(get_engine)`).
 
 **Response model:** `HealthResponse`
 
@@ -139,6 +139,8 @@ With `translation_model: translategemma`, the array has 57 entries (`Auto-detect
 ```
 
 Use `curl` or `/docs` to see the full list for your deployment.
+
+**Engine:** Like `/health`, this route uses `get_engine`. If the engine was not initialized on startup, the request fails with **500** (`RuntimeError`), not 503.
 
 ---
 
@@ -346,11 +348,12 @@ On provider failure, the page renders an error message instead of raising JSON 5
 ## Integration checklist for app developers
 
 1. **Health:** Poll `GET /health` after deploy.
-2. **Translate:** Use `POST /api/v1/translate` for quality pipeline or `/simple` for latency.
-3. **Context:** If you rely on website context, poll `GET /api/v1/context/status` until `ready` is true, or call rebuild and wait before expecting `context_used: true`.
-4. **Profiles:** Use `POST /api/v1/context/profiles` + `POST /api/v1/context/profiles/{id}/rebuild` for reusable indexes; today, **use those profile IDs from the HTML UI or custom server code**—the public JSON translate endpoints do not accept `context_profile_id` yet.
-5. **Failures:** Handle **503** on translate routes when the LLM backend is down.
-6. **Docs:** Use `/docs` to confirm schemas match your client version after upgrades.
+2. **Languages:** Call `GET /api/v1/translate/languages` to populate source/target dropdowns (list depends on `defaults.translation_model` in `config_translation.yaml`).
+3. **Translate:** Use `POST /api/v1/translate` for quality pipeline or `/api/v1/translate/simple` for latency.
+4. **Context:** If you rely on website context, poll `GET /api/v1/context/status` until `ready` is true, or call rebuild and wait before expecting `context_used: true`.
+5. **Profiles:** Use `POST /api/v1/context/profiles` + `POST /api/v1/context/profiles/{id}/rebuild` for reusable indexes; today, **use those profile IDs from the HTML UI or custom server code**—the public JSON translate endpoints do not accept `context_profile_id` yet.
+6. **Failures:** Handle **503** on the translate **POST** endpoints when the LLM backend is down.
+7. **Docs:** Use `/docs` to confirm schemas match your client version after upgrades.
 
 ---
 
@@ -361,3 +364,4 @@ Behavior is defined by the repository at the time you deploy. After pulling new 
 - [`api/schemas.py`](api/schemas.py) — request/response models  
 - [`api/routes_translation.py`](api/routes_translation.py) — translation mapping and defaults  
 - [`api/routes_context.py`](api/routes_context.py) — context and profile behavior  
+- [`translation_engine/supported_languages.py`](translation_engine/supported_languages.py) — language lists keyed by `translation_model`  

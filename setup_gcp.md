@@ -47,8 +47,11 @@ Enable the following APIs in your project:
 
 - Cloud Run API
 - Artifact Registry API
-- Cloud Build API
 - Vertex AI API
+
+`cloudbuild.googleapis.com` is only needed if you plan to use Cloud Build-based
+image builds (for example, `gcloud builds submit`). The commands in this guide
+use local Docker build/push, so Cloud Build is optional here.
 
 You can do this from the Console, or via CLI:
 
@@ -73,9 +76,11 @@ Pick a Vertex AI generative model that fits your cost/latency needs, for example
 
 Note the **model ID** and the **location/region** where it is available (e.g. `europe-west1`).
 
-### 4.2 Choose an embedding model (optional, for context)
+### 4.2 Choose an embedding model (required when context is enabled)
 
-If you want to use the website-based context features in production, choose a text embedding model, e.g.:
+If you want to use website-based context features in production
+(`config_context.yaml` -> `context_sources.enabled: true`), choose a text
+embedding model, e.g.:
 
 - `text-embedding-004`
 
@@ -98,6 +103,16 @@ vertex_ai:
 Leave the `ollama` block intact – it can still be used for local development if you switch `provider_type` back to `"ollama"`.
 
 Commit or otherwise persist this production config as appropriate for your workflow.
+
+Important configuration note:
+
+- This app reads provider/runtime settings from YAML files in the repo root
+  (`config.yaml`, `config_translation.yaml`, `config_context.yaml`).
+- Cloud Run environment variables are not currently used to configure
+  `vertex_ai.project_id`, `vertex_ai.location`, `vertex_ai.model_id`, or
+  `vertex_ai.embedding_model_id`.
+- If you omit `embedding_model_id` while `context_sources.enabled: true`, startup
+  will fail in Vertex AI mode. It is only optional when context is disabled.
 
 ---
 
