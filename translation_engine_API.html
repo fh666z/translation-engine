@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Translation Engine HTTP API</title>
+  <style>
+
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --border: #30363d;
+      --code-bg: #161b22;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      color: var(--text);
+      background: var(--bg);
+      margin: 0;
+      padding: 1.5rem clamp(1rem, 4vw, 2.5rem) 3rem;
+      max-width: 52rem;
+      margin-inline: auto;
+    }
+    h1 {
+      font-size: 1.85rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.75rem;
+      margin-top: 0;
+    }
+    h2 {
+      font-size: 1.35rem;
+      margin-top: 2rem;
+      color: var(--text);
+    }
+    h3 { font-size: 1.1rem; margin-top: 1.5rem; color: var(--muted); }
+    p { margin: 0.75rem 0; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2rem 0;
+    }
+    strong { color: #f0f6fc; }
+    ul, ol { padding-left: 1.35rem; margin: 0.75rem 0; }
+    li { margin: 0.35rem 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      margin: 1rem 0;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.5rem 0.65rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: var(--surface); color: var(--muted); font-weight: 600; }
+    tr:nth-child(even) td { background: rgba(22, 27, 34, 0.5); }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.85rem 1rem;
+      overflow-x: auto;
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    code {
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 0.88em;
+    }
+    p code, li code, td code {
+      background: var(--code-bg);
+      padding: 0.12em 0.35em;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      border: none;
+      font-size: inherit;
+    }
+    article {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: clamp(1.25rem, 3vw, 2rem);
+    }
+
+  </style>
+</head>
+<body>
+<article>
+<h1>Translation Engine HTTP API</h1>
+<p>This document describes the HTTP API exposed by the Translation Engine FastAPI application so client applications can integrate without reading the Python source.</p>
+<p><strong>Application:</strong> FastAPI app in <a href="api/main.py"><code>api/main.py</code></a><br />
+<strong>Title / version:</strong> <code>Translation Engine API</code> / <code>1.0.0</code> (as configured in code)</p>
+<hr />
+<h2>Base URL and running the server</h2>
+<p>Typical local startup (from the project root):</p>
+<pre><code class="language-bash">uvicorn api.main:app --host 0.0.0.0 --port 8000
+</code></pre>
+<p>Unless you configure a reverse proxy or different port, the <strong>base URL</strong> is:</p>
+<pre><code class="language-text">http://localhost:8000
+</code></pre>
+<p>All paths below are relative to that base (e.g. full translation URL: <code>http://localhost:8000/api/v1/translate</code>).</p>
+<hr />
+<h2>Authentication and security</h2>
+<ul>
+<li><strong>There is no API key, JWT, or session authentication</strong> in the current implementation.</li>
+<li>The service is intended for trusted networks (local dev, private VPC, or a gateway that adds auth). <strong>Do not expose it to the public internet without additional protection.</strong></li>
+<li><strong>CORS</strong> is not configured in <code>api/main.py</code>. Browser-based clients on another origin may be blocked unless you add CORS middleware.</li>
+</ul>
+<hr />
+<h2>Content types</h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Content type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JSON API (<code>/api/v1/...</code>, <code>/health</code>)</td>
+<td><code>application/json</code> for request bodies (where applicable) and JSON responses</td>
+</tr>
+<tr>
+<td>HTML UI (<code>GET /</code>, <code>POST /translate</code>)</td>
+<td><code>text/html</code></td>
+</tr>
+</tbody>
+</table>
+<p>Set header for JSON POST requests:</p>
+<pre><code class="language-http">Content-Type: application/json
+</code></pre>
+<hr />
+<h2>OpenAPI (interactive docs)</h2>
+<p>FastAPI generates OpenAPI automatically:</p>
+<table>
+<thead>
+<tr>
+<th>URL</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/docs</code></td>
+<td>Swagger UI</td>
+</tr>
+<tr>
+<td><code>/redoc</code></td>
+<td>ReDoc</td>
+</tr>
+</tbody>
+</table>
+<p>These reflect the same routes and schemas as this document and are useful for trying requests in a browser.</p>
+<hr />
+<h2>Errors</h2>
+<table>
+<thead>
+<tr>
+<th>HTTP status</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>422 Unprocessable Entity</strong></td>
+<td>Request body or query fails <strong>Pydantic</strong> validation (wrong types, invalid URL in <code>ContextWebsite</code>, etc.). Response body follows FastAPI’s default validation error shape (<code>detail</code> array).</td>
+</tr>
+<tr>
+<td><strong>503 Service Unavailable</strong></td>
+<td>The LLM provider is unreachable (e.g. Ollama down). Raised as <code>ProviderUnavailableError</code> from translation routes; <code>detail</code> is a human-readable string.</td>
+</tr>
+<tr>
+<td><strong>500 Internal Server Error</strong></td>
+<td>Unexpected errors, including <code>RuntimeError</code> if the engine was not initialized on startup, or if context profile routes hit an uninitialized profile store (see context routes).</td>
+</tr>
+</tbody>
+</table>
+<p>There is <strong>no</strong> custom error envelope: clients should read <code>detail</code> (string or list) from the JSON body when present.</p>
+<hr />
+<h2>Health</h2>
+<h3><code>GET /health</code></h3>
+<p><strong>Purpose:</strong> Liveness check. Succeeds if the app started and the engine dependency resolves (engine exists on <code>app.state</code>).</p>
+<p><strong>Response model:</strong> <code>HealthResponse</code></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>status</code></td>
+<td>string</td>
+<td>Currently always <code>"ok"</code> when the handler returns.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">curl -s http://localhost:8000/health
+</code></pre>
+<pre><code class="language-json">{&quot;status&quot;:&quot;ok&quot;}
+</code></pre>
+<hr />
+<h2>Translation (JSON API)</h2>
+<p>Prefix: <strong><code>/api/v1/translate</code></strong></p>
+<p>The pipeline can use <strong>website context</strong> (FAISS + crawled sites) and <strong>reflection</strong> (critique + optional refinement). Behavior depends on <code>config.yaml</code> / <code>config_translation.yaml</code> / <code>config_context.yaml</code> and runtime index state.</p>
+<h3>Field semantics (requests)</h3>
+<ul>
+<li>Omitting optional fields lets the server fill defaults from the configured translation profile (see <code>TranslationPipeline</code> / <code>Translator</code> in code).</li>
+<li><strong><code>source_language</code>:</strong> If omitted, the API passes <code>"Auto-detect"</code> into the domain layer. If you send <code>"auto"</code> (case-insensitive) or set <strong><code>auto_detect_source_language</code>: true</strong>, auto-detect behavior is applied in prompts.</li>
+<li><strong><code>target_language</code></strong>, <strong><code>tone</code></strong>, <strong><code>purpose_of_text</code>:</strong> When omitted, defaults come from the engine’s loaded <code>TranslationConfig</code> (YAML).</li>
+<li><strong><code>target_audience</code>:</strong> Not exposed on the JSON request schema; it always comes from YAML for JSON API calls.</li>
+<li><strong><code>use_context</code>:</strong> If <code>true</code>, context is used only when the index is ready and (for default index) <code>context_ready</code> is true. See <a href="#context-json-api">Context</a>.</li>
+<li><strong><code>use_reflection</code>:</strong> If <code>true</code>, reflection runs only when reflection is enabled in config and a reflector is wired; otherwise the pipeline behaves as if reflection were off.</li>
+</ul>
+<p><strong>Limitation (context profiles):</strong> The domain model supports <code>context_profile_id</code>, but <strong><code>TranslateRequest</code> and <code>TranslateSimpleRequest</code> do not include this field.</strong> The JSON API therefore always uses the <strong>default</strong> context index when <code>use_context</code> is true, not a named profile. To use per-request profiles today, use the <strong>HTML form</strong> at <code>POST /translate</code> or extend the API schemas.</p>
+<hr />
+<h3><code>POST /api/v1/translate</code></h3>
+<p><strong>Purpose:</strong> Full pipeline: optional context retrieval → initial translation → optional reflection → optional refinement.</p>
+<p><strong>Request body:</strong> <code>TranslateRequest</code></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>text</code></td>
+<td>string</td>
+<td>yes</td>
+<td>—</td>
+<td>Source text to translate.</td>
+</tr>
+<tr>
+<td><code>source_language</code></td>
+<td>string | null</td>
+<td>no</td>
+<td>null → Auto-detect</td>
+<td>Source language label for prompts.</td>
+</tr>
+<tr>
+<td><code>target_language</code></td>
+<td>string | null</td>
+<td>no</td>
+<td>null → YAML default</td>
+<td>Target language.</td>
+</tr>
+<tr>
+<td><code>tone</code></td>
+<td>string | null</td>
+<td>no</td>
+<td>null → YAML default</td>
+<td>Tone (e.g. formal).</td>
+</tr>
+<tr>
+<td><code>purpose_of_text</code></td>
+<td>string | null</td>
+<td>no</td>
+<td>null → YAML default</td>
+<td>Purpose of the text.</td>
+</tr>
+<tr>
+<td><code>auto_detect_source_language</code></td>
+<td>boolean</td>
+<td>no</td>
+<td><code>false</code></td>
+<td>When true, prompt instructs the model to detect source language.</td>
+</tr>
+<tr>
+<td><code>use_context</code></td>
+<td>boolean</td>
+<td>no</td>
+<td><code>true</code></td>
+<td>Whether to attach website context when available.</td>
+</tr>
+<tr>
+<td><code>use_reflection</code></td>
+<td>boolean</td>
+<td>no</td>
+<td><code>true</code></td>
+<td>Whether to run reflection/refinement when configured.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Response:</strong> <code>TranslateResponse</code></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source_text</code></td>
+<td>string</td>
+<td>Echo of input text.</td>
+</tr>
+<tr>
+<td><code>initial_translation</code></td>
+<td>string</td>
+<td>Output of the first translation step.</td>
+</tr>
+<tr>
+<td><code>reflection</code></td>
+<td>string | null</td>
+<td>Critique text if reflection ran; otherwise <code>null</code>.</td>
+</tr>
+<tr>
+<td><code>final_translation</code></td>
+<td>string</td>
+<td>After refinement, or same as initial if refinement skipped/disabled.</td>
+</tr>
+<tr>
+<td><code>refinement_skipped</code></td>
+<td>boolean</td>
+<td><code>true</code> if refinement was not applied (e.g. “excellent” reflection or reflection off).</td>
+</tr>
+<tr>
+<td><code>context_used</code></td>
+<td>boolean</td>
+<td><code>true</code> if non-empty context was applied to the translation step.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">curl -s -X POST http://localhost:8000/api/v1/translate \
+  -H &quot;Content-Type: application/json&quot; \
+  -d &quot;{\&quot;text\&quot;:\&quot;Hello world\&quot;,\&quot;use_context\&quot;:false,\&quot;use_reflection\&quot;:true}&quot;
+</code></pre>
+<hr />
+<h3><code>POST /api/v1/translate/simple</code></h3>
+<p><strong>Purpose:</strong> Single LLM translation call <strong>without</strong> reflection/refinement. Still supports context when enabled and ready.</p>
+<p><strong>Request body:</strong> <code>TranslateSimpleRequest</code> (same as <code>TranslateRequest</code> except <strong>no</strong> <code>use_reflection</code>)</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>text</code></td>
+<td>string</td>
+<td>yes</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>source_language</code></td>
+<td>string | null</td>
+<td>no</td>
+<td>null → Auto-detect</td>
+</tr>
+<tr>
+<td><code>target_language</code></td>
+<td>string | null</td>
+<td>no</td>
+<td>null → YAML default</td>
+</tr>
+<tr>
+<td><code>tone</code></td>
+<td>string | null</td>
+<td>no</td>
+<td>null → YAML default</td>
+</tr>
+<tr>
+<td><code>purpose_of_text</code></td>
+<td>string | null</td>
+<td>no</td>
+<td>null → YAML default</td>
+</tr>
+<tr>
+<td><code>auto_detect_source_language</code></td>
+<td>boolean</td>
+<td>no</td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>use_context</code></td>
+<td>boolean</td>
+<td>no</td>
+<td><code>true</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Response:</strong> <code>TranslateSimpleResponse</code></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>translation</code></td>
+<td>string</td>
+<td>Translated text.</td>
+</tr>
+<tr>
+<td><code>context_used</code></td>
+<td>boolean</td>
+<td><code>true</code> when <code>use_context</code> was true <strong>and</strong> the default context index was ready (<code>pipeline.context_ready</code>).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<pre><code class="language-bash">curl -s -X POST http://localhost:8000/api/v1/translate/simple \
+  -H &quot;Content-Type: application/json&quot; \
+  -d &quot;{\&quot;text\&quot;:\&quot;Hello\&quot;,\&quot;use_context\&quot;:false}&quot;
+</code></pre>
+<hr />
+<h2>Context (JSON API)</h2>
+<p>Prefix: <strong><code>/api/v1/context</code></strong></p>
+<p>Context indexing uses a <strong>FAISS</strong>-backed provider when enabled in configuration. Several endpoints schedule work on a <strong>background task</strong>; they return immediately while the index rebuilds.</p>
+<p><strong>Website limit:</strong> <code>UpdateContextSourcesRequest</code> accepts a list, but <strong>only the first three</strong> entries are used (<code>payload.websites[:3]</code>).</p>
+<hr />
+<h3><code>GET /api/v1/context/status</code></h3>
+<p><strong>Purpose:</strong> Report whether context is enabled, whether the <strong>default</strong> index is ready, and chunk count when ready.</p>
+<p><strong>Response:</strong> <code>ContextStatusResponse</code></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>boolean</td>
+<td>Context feature enabled in config and provider present.</td>
+</tr>
+<tr>
+<td><code>ready</code></td>
+<td>boolean</td>
+<td>Default index built and usable.</td>
+</tr>
+<tr>
+<td><code>chunk_count</code></td>
+<td>integer | null</td>
+<td>Number of chunks when <code>ready</code>; otherwise <code>null</code>.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3><code>POST /api/v1/context/rebuild</code></h3>
+<p><strong>Purpose:</strong> Rebuild the <strong>default</strong> context index in the background (<code>force=True</code>).</p>
+<p><strong>Request body:</strong> none</p>
+<p><strong>Response:</strong></p>
+<pre><code class="language-json">{&quot;started&quot;: true}
+</code></pre>
+<hr />
+<h3><code>POST /api/v1/context/profiles</code></h3>
+<p><strong>Purpose:</strong> Create a <strong>reusable context profile</strong> record <strong>without</strong> starting a rebuild in this handler (caller should call rebuild separately).</p>
+<p><strong>Request body:</strong> <code>UpdateContextSourcesRequest</code></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>websites</code></td>
+<td>array of <code>ContextWebsite</code></td>
+<td>Up to <strong>3</strong> used.</td>
+</tr>
+</tbody>
+</table>
+<p><code>ContextWebsite</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>url</code></td>
+<td>string (URL)</td>
+<td>yes</td>
+<td>Must be a valid HTTP/HTTPS URL (<code>HttpUrl</code>).</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>string | null</td>
+<td>no</td>
+<td>Display name; defaults to string form of <code>url</code> if omitted.</td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>string | null</td>
+<td>no</td>
+<td>Defaults to empty string if omitted.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Response:</strong> <code>ContextProfileResponse</code></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>profile_id</code></td>
+<td>string</td>
+<td>New profile identifier.</td>
+</tr>
+<tr>
+<td><code>ready</code></td>
+<td>boolean</td>
+<td>Always <code>false</code> in current implementation for this route.</td>
+</tr>
+<tr>
+<td><code>chunk_count</code></td>
+<td>null</td>
+<td>Always <code>null</code> here.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Errors:</strong> If the context profile store is missing, the code raises <strong><code>RuntimeError</code></strong> → <strong>500</strong>.</p>
+<hr />
+<h3><code>POST /api/v1/context/profiles/{profile_id}/rebuild</code></h3>
+<p><strong>Purpose:</strong> Schedule a <strong>background</strong> rebuild for an existing profile (<code>force=True</code>).</p>
+<p><strong>Path parameter:</strong> <code>profile_id</code> — string</p>
+<p><strong>Behavior:</strong></p>
+<ul>
+<li>If the profile <strong>does not exist</strong>, the handler still returns <strong>200</strong> with <code>ContextProfileResponse(profile_id=..., ready=false, chunk_count=null)</code> and <strong>does not</strong> enqueue a task.</li>
+<li>If the profile exists, a background task runs <code>initialize_context_profile(profile, True)</code>.</li>
+</ul>
+<p><strong>Response:</strong> <code>ContextProfileResponse</code> (same shape as above; <code>ready</code> is <code>false</code> in the immediate response).</p>
+<hr />
+<h3><code>POST /api/v1/context/sources</code></h3>
+<p><strong>Purpose:</strong> Create a <strong>new</strong> context profile from the given websites and schedule its index rebuild in the background. Intended for “update sources” flows in the API.</p>
+<p><strong>Request body:</strong> <code>UpdateContextSourcesRequest</code> (same as profiles)</p>
+<p><strong>Response:</strong> <code>ContextStatusResponse</code></p>
+<p>Typical immediate values after scheduling:</p>
+<ul>
+<li><code>enabled</code>: <code>true</code> if profile store exists; if store is missing, returns <code>enabled: false</code>, <code>ready: false</code>, <code>chunk_count: null</code>.</li>
+<li><code>ready</code>: <code>false</code> (rebuild is asynchronous).</li>
+<li><code>chunk_count</code>: <code>null</code></li>
+</ul>
+<p><strong>Note:</strong> This endpoint <strong>creates a new profile</strong> each time; it does not replace a named profile by ID. Use profile APIs if you need stable IDs across updates.</p>
+<hr />
+<h2>HTML frontend (browser)</h2>
+<p>These routes are for <strong>server-rendered</strong> UI, not typical machine-to-machine JSON clients.</p>
+<h3><code>GET /</code></h3>
+<p>Returns the main translation form (Jinja template <code>templates/index.html</code>) with defaults from configuration.</p>
+<h3><code>POST /translate</code></h3>
+<p><strong>Content type:</strong> <code>application/x-www-form-urlencoded</code> (HTML form).</p>
+<p><strong>Form fields (representative):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>text</code></td>
+<td>Source text (required).</td>
+</tr>
+<tr>
+<td><code>source_language</code>, <code>target_language</code>, <code>tone</code>, <code>purpose_of_text</code></td>
+<td>Strings from the form.</td>
+</tr>
+<tr>
+<td><code>use_reflection</code></td>
+<td>Checkbox (absent = false).</td>
+</tr>
+<tr>
+<td><code>use_context</code></td>
+<td>Checkbox (absent = false).</td>
+</tr>
+<tr>
+<td><code>website1</code>, <code>website2</code>, <code>website3</code></td>
+<td>Optional URL strings for context (up to 3 non-empty).</td>
+</tr>
+<tr>
+<td><code>context_profile_id</code></td>
+<td>Optional; when updating context, ties to an existing profile id when present.</td>
+</tr>
+</tbody>
+</table>
+<p>When context websites are provided with <code>use_context</code>, the server may create/update a <strong>context profile</strong> and enqueue a <strong>background</strong> index rebuild; the page can show a notice that the index may not be ready until a later request.</p>
+<p>On provider failure, the page renders an error message instead of raising JSON 503.</p>
+<hr />
+<h2>Integration checklist for app developers</h2>
+<ol>
+<li><strong>Health:</strong> Poll <code>GET /health</code> after deploy.</li>
+<li><strong>Translate:</strong> Use <code>POST /api/v1/translate</code> for quality pipeline or <code>/simple</code> for latency.</li>
+<li><strong>Context:</strong> If you rely on website context, poll <code>GET /api/v1/context/status</code> until <code>ready</code> is true, or call rebuild and wait before expecting <code>context_used: true</code>.</li>
+<li><strong>Profiles:</strong> Use <code>POST /api/v1/context/profiles</code> + <code>POST /api/v1/context/profiles/{id}/rebuild</code> for reusable indexes; today, <strong>use those profile IDs from the HTML UI or custom server code</strong>—the public JSON translate endpoints do not accept <code>context_profile_id</code> yet.</li>
+<li><strong>Failures:</strong> Handle <strong>503</strong> on translate routes when the LLM backend is down.</li>
+<li><strong>Docs:</strong> Use <code>/docs</code> to confirm schemas match your client version after upgrades.</li>
+</ol>
+<hr />
+<h2>Changelog pointer</h2>
+<p>Behavior is defined by the repository at the time you deploy. After pulling new commits, re-check:</p>
+<ul>
+<li><a href="api/schemas.py"><code>api/schemas.py</code></a> — request/response models  </li>
+<li><a href="api/routes_translation.py"><code>api/routes_translation.py</code></a> — translation mapping and defaults  </li>
+<li><a href="api/routes_context.py"><code>api/routes_context.py</code></a> — context and profile behavior  </li>
+</ul>
+</article>
+</body>
+</html>

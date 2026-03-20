@@ -8,6 +8,7 @@ from translation_engine.context_profiles import ContextProfile
 from translation_engine.domain.models import TranslationOptions, TranslationRequest
 from translation_engine.engine import Engine
 from translation_engine.errors import ProviderUnavailableError
+from translation_engine.supported_languages import language_options_for_translation_model
 
 from .dependencies import get_engine
 
@@ -15,20 +16,6 @@ from .dependencies import get_engine
 router = APIRouter(tags=["frontend"])
 
 templates = Jinja2Templates(directory="templates")
-
-LANGUAGE_OPTIONS = [
-    "Auto-detect",
-    "English",
-    "German",
-    "Bulgarian",
-    "French",
-    "Spanish",
-    "Italian",
-    "Dutch",
-    "Portuguese",
-    "Romanian",
-    "Greek",
-]
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -45,7 +32,9 @@ def show_form(request: Request, engine: Engine = Depends(get_engine)) -> HTMLRes
         {
             "defaults": translation_cfg,
             "context_enabled": context_cfg.enabled,
-            "language_options": LANGUAGE_OPTIONS,
+            "language_options": language_options_for_translation_model(
+                engine.config.translation.translation_model,
+            ),
             "result": None,
         },
     )
@@ -149,7 +138,9 @@ def submit_form(
         {
             "defaults": translation_cfg,
             "context_enabled": context_cfg.enabled,
-            "language_options": LANGUAGE_OPTIONS,
+            "language_options": language_options_for_translation_model(
+                engine.config.translation.translation_model,
+            ),
             "result": result,
             "context_notice": context_notice,
             "error_message": error_message,

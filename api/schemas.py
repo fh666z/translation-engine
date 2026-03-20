@@ -63,3 +63,7 @@ class ContextProfileResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
 
+
+class SupportedLanguagesResponse(BaseModel):
+    languages: list[str]
+

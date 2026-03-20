@@ -116,6 +116,32 @@ The pipeline can use **website context** (FAISS + crawled sites) and **reflectio
 
 ---
 
+### `GET /api/v1/translate/languages`
+
+**Purpose:** Return the ordered list of language labels the server suggests for `source_language` and `target_language` (same options as the HTML form). The set depends on **`defaults.translation_model`** in `config_translation.yaml` (e.g. `translategemma` uses the WMT24++ 55-language evaluation set plus `English` and `Auto-detect`). The translation endpoints still accept arbitrary strings for those fields; this endpoint is for discovery and UI dropdowns.
+
+**Response model:** `SupportedLanguagesResponse`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `languages` | array of strings | Ordered labels (e.g. `Auto-detect`, `English`, then model-specific targets). |
+
+**Example:**
+
+```bash
+curl -s http://localhost:8000/api/v1/translate/languages
+```
+
+With `translation_model: translategemma`, the array has 57 entries (`Auto-detect`, `English`, then 55 WMT24++ targets). Example start of the response:
+
+```json
+{"languages":["Auto-detect","English","Arabic (Egypt)","Arabic (Saudi Arabia)","Bengali","Bulgarian"]}
+```
+
+Use `curl` or `/docs` to see the full list for your deployment.
+
+---
+
 ### `POST /api/v1/translate`
 
 **Purpose:** Full pipeline: optional context retrieval → initial translation → optional reflection → optional refinement.

@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.schemas import (
+    SupportedLanguagesResponse,
     TranslateRequest,
     TranslateResponse,
     TranslateSimpleRequest,
@@ -12,13 +13,24 @@ from translation_engine.domain.models import (
     TranslationOptions,
     TranslationRequest as DomainTranslationRequest,
 )
+from translation_engine.engine import Engine
 from translation_engine.errors import ProviderUnavailableError
 from translation_engine.services.pipeline import TranslationPipeline
+from translation_engine.supported_languages import language_options_for_translation_model
 
-from .dependencies import get_pipeline
+from .dependencies import get_engine, get_pipeline
 
 
 router = APIRouter(prefix="/api/v1/translate", tags=["translation"])
+
+
+@router.get("/languages", response_model=SupportedLanguagesResponse)
+def supported_languages(engine: Engine = Depends(get_engine)) -> SupportedLanguagesResponse:
+    """Return language labels for the configured ``defaults.translation_model``."""
+    model_id = engine.config.translation.translation_model
+    return SupportedLanguagesResponse(
+        languages=language_options_for_translation_model(model_id),
+    )
 
 
 @router.post("", response_model=TranslateResponse)
