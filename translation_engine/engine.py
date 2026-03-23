@@ -8,7 +8,7 @@ different frontends (FastAPI, CLI, etc.).
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 
 from translation_engine.config.manager import ConfigManager
 from translation_engine.config.models import OllamaConfig, VertexAIConfig
@@ -16,15 +16,10 @@ from translation_engine.context_profiles import InMemoryContextProfileStore
 from translation_engine.providers.base import LLMProvider
 from translation_engine.providers.context import FAISSContextProvider
 from translation_engine.providers.ollama import OllamaEmbeddingProvider, OllamaLLMProvider
+from translation_engine.providers.vertex_ai import VertexAIEmbeddingProvider, VertexAILLMProvider
 from translation_engine.services.pipeline import TranslationPipeline
 from translation_engine.services.reflector import Reflector
 from translation_engine.services.translator import Translator
-
-if TYPE_CHECKING:
-    from translation_engine.providers.vertex_ai import (
-        VertexAIEmbeddingProvider,
-        VertexAILLMProvider,
-    )
 
 
 @dataclass
@@ -50,8 +45,6 @@ def _create_main_llm(config: ConfigManager) -> LLMProvider:
         )
 
     if config.provider_type == "vertex_ai":
-        from translation_engine.providers.vertex_ai import VertexAILLMProvider
-
         vertex_base: VertexAIConfig = config.vertex_ai
         vertex_cfg = VertexAIConfig(
             project_id=vertex_base.project_id,
@@ -80,8 +73,6 @@ def _create_context_provider(
 
     # Choose embedding backend based on provider_type.
     if config.provider_type == "vertex_ai":
-        from translation_engine.providers.vertex_ai import VertexAIEmbeddingProvider
-
         embedding_provider = VertexAIEmbeddingProvider(config.vertex_ai)
     else:
         embedding_provider = OllamaEmbeddingProvider(
@@ -106,8 +97,6 @@ def _create_reflector(
     # Use separate model for reflection if configured
     if config.reflection.use_separate_model:
         if config.provider_type == "vertex_ai":
-            from translation_engine.providers.vertex_ai import VertexAILLMProvider
-
             # Use the same Vertex project/location but a different model id.
             vertex_base: VertexAIConfig = config.vertex_ai
             reflection_vertex_cfg = VertexAIConfig(
@@ -181,4 +170,3 @@ def create_engine(config_dir: Optional[Path] = None) -> Engine:
         context_provider=context_provider,
         context_profile_store=InMemoryContextProfileStore(),
     )
-
