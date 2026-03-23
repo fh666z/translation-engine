@@ -86,7 +86,7 @@ embedding model, e.g.:
 
 ---
 
-## 5. Update `config.yaml` for production
+## 5. Update `config.yaml` and `config_translation.yaml` for production
 
 In the repository root, open `config.yaml` and set:
 
@@ -96,8 +96,14 @@ provider_type: "vertex_ai"
 vertex_ai:
   project_id: "YOUR_PROJECT_ID"
   location: "europe-west1"
-  model_id: "gemini-1.5-flash"        # or another supported Vertex AI model
   embedding_model_id: "text-embedding-004"
+```
+
+Then set runtime model selection in `config_translation.yaml`:
+
+```yaml
+defaults:
+  translation_model: "gemini-1.5-flash"   # runtime Vertex AI model ID
 ```
 
 Leave the `ollama` block intact – it can still be used for local development if you switch `provider_type` back to `"ollama"`.
@@ -109,7 +115,7 @@ Important configuration note:
 - This app reads provider/runtime settings from YAML files in the repo root
   (`config.yaml`, `config_translation.yaml`, `config_context.yaml`).
 - Cloud Run environment variables are not currently used to configure
-  `vertex_ai.project_id`, `vertex_ai.location`, `vertex_ai.model_id`, or
+  `vertex_ai.project_id`, `vertex_ai.location`, `defaults.translation_model`, or
   `vertex_ai.embedding_model_id`.
 - If you omit `embedding_model_id` while `context_sources.enabled: true`, startup
   will fail in Vertex AI mode. It is only optional when context is disabled.

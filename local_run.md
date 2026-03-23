@@ -39,7 +39,7 @@ Keep the virtual environment activated in any terminal where you run the app or 
 
 ---
 
-## 3. Configure backend in `config.yaml`
+## 3. Configure backend in `config.yaml` and `config_translation.yaml`
 
 Open `config.yaml` in the project root and choose your provider:
 
@@ -49,13 +49,13 @@ Open `config.yaml` in the project root and choose your provider:
 provider_type: "ollama"
 
 ollama:
-  model: "translategemma"
   base_url: "http://localhost:11434"
   temperature: 0.7
   streaming: true
 ```
 
 Leave the `vertex_ai` block as-is for now; it will be ignored while `provider_type` is `"ollama"`.
+The runtime translation model is not read from `config.yaml`.
 
 ### 3.2 Vertex AI (optional, if you want to test against GCP)
 
@@ -67,7 +67,6 @@ provider_type: "vertex_ai"
 vertex_ai:
   project_id: "YOUR_PROJECT_ID"
   location: "YOUR_REGION"         # e.g. "europe-west1"
-  model_id: "gemini-1.5-flash"    # or another supported Vertex AI model
   embedding_model_id: "text-embedding-004"
 ```
 
@@ -76,6 +75,18 @@ Then authenticate once on your machine:
 ```bash
 gcloud auth application-default login
 ```
+
+### 3.3 Set the runtime model in `config_translation.yaml` (required)
+
+Set:
+
+```yaml
+defaults:
+  translation_model: "translategemma:4b"  # Ollama example
+```
+
+If `provider_type` is `"vertex_ai"`, set `defaults.translation_model` to your Vertex AI model ID
+(for example `gemini-1.5-flash`).
 
 ---
 
@@ -95,7 +106,7 @@ If you are using `provider_type: "ollama"`:
    ollama serve
    ```
 
-3. In another terminal, pull the models you need (matching your `config.yaml`):
+3. In another terminal, pull the models you need (matching your `config_translation.yaml` and `config_context.yaml`):
 
    ```bash
    ollama pull translategemma

@@ -10,8 +10,8 @@ At the heart of the system is the **Engine**, which wires together configuration
 
 - `translation_engine/config/manager.py` – `ConfigManager`
   - Loads configuration from:
-    - `config.yaml` – provider selection (Ollama vs Vertex AI) and app settings
-    - `config_translation.yaml` – translation defaults, reflection, prompts
+    - `config.yaml` – provider selection (Ollama vs Vertex AI), provider connection/project settings, and app settings
+    - `config_translation.yaml` – runtime translation model, translation defaults, reflection, prompts
     - `config_context.yaml` – context indexing configuration
   - Exposes typed config objects: `OllamaConfig`, `VertexAIConfig`, `TranslationConfig`, `ReflectionConfig`, `ContextConfig`, `PromptsConfig`.
 
@@ -44,6 +44,7 @@ At the heart of the system is the **Engine**, which wires together configuration
 - `translation_engine/engine.py`
   - `create_engine()`:
     - Loads configuration.
+    - Reads runtime LLM model from `config_translation.yaml -> defaults.translation_model`.
     - Chooses **LLM provider** based on `provider_type`:
       - `"ollama"` → `OllamaLLMProvider`.
       - `"vertex_ai"` → `VertexAILLMProvider`.

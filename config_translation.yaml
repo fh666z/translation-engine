@@ -3,7 +3,7 @@
 # ============================================================================
 
 defaults:
-  translation_model: "translategemma"
+  translation_model: "translategemma:4b"
   source_language: "English"
   target_language: "German"
   target_audience: "Customers purchasing online"
@@ -17,8 +17,8 @@ defaults:
 
 reflection:
   enabled: true
-  use_separate_model: false
-  reflection_model: "translategemma"
+  use_separate_model: true
+  reflection_model: "translategemma:27b"
   skip_keywords:
     - "excellent"
     - "accurate"

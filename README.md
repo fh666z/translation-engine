@@ -19,7 +19,7 @@ LLM-based translation engine that uses configurable prompts, optional reflection
   - `routes_health.py` – Health check endpoint  
   - `routes_frontend.py` – Simple server-rendered HTML frontend  
 - `templates/` – Jinja2 templates for the HTML frontend (mainly `index.html`)  
-- `config.yaml` – LLM provider selection (Ollama vs Vertex AI) and app settings  
+- `config.yaml` – provider selection (Ollama vs Vertex AI), provider connection/project settings, and app settings  
 - `config_translation.yaml` – Translation defaults, reflection, and prompts  
 - `config_context.yaml` – Website sources and FAISS context settings  
 - `requirements.txt` – Python dependencies  
@@ -100,22 +100,25 @@ To develop against Vertex AI instead of Ollama:
 
    - `project_id` – your GCP project ID  
    - `location` – Vertex AI region (e.g. `europe-west1`)  
-   - `model_id` – generative model ID (e.g. `gemini-1.5-flash`)  
    - `embedding_model_id` – embedding model ID (e.g. `text-embedding-004`) if you want context indexing
 
-2. Authenticate locally so the Vertex AI SDK can use your credentials:
+2. Set the active runtime translation model in `config_translation.yaml`:
+
+   - `defaults.translation_model` – model ID used at runtime for translation (and default reflection model when reflection model is not explicitly set)
+
+3. Authenticate locally so the Vertex AI SDK can use your credentials:
 
    ```bash
    gcloud auth application-default login
    ```
 
-3. Start the app as above:
+4. Start the app as above:
 
    ```bash
    uvicorn api.main:app --host 0.0.0.0 --port 8000
    ```
 
-4. Use the HTML frontend at `http://localhost:8000/` or the JSON API endpoints as before.
+5. Use the HTML frontend at `http://localhost:8000/` or the JSON API endpoints as before.
 
 ## Context profiles
 

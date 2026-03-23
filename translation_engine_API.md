@@ -103,6 +103,11 @@ Prefix: **`/api/v1/translate`**
 
 The pipeline can use **website context** (FAISS + crawled sites) and **reflection** (critique + optional refinement). Behavior depends on `config.yaml` / `config_translation.yaml` / `config_context.yaml` and runtime index state.
 
+Runtime model selection note:
+
+- Active LLM model comes from `config_translation.yaml` -> `defaults.translation_model`.
+- `config.yaml` controls provider selection (`provider_type`) plus provider connection/project settings.
+
 ### Field semantics (requests)
 
 - Omitting optional fields lets the server fill defaults from the configured translation profile (see `TranslationPipeline` / `Translator` in code).

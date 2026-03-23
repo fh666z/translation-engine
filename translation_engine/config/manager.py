@@ -60,8 +60,8 @@ class ConfigManager:
     
     def load_all(self) -> None:
         """Load all configuration files and populate dataclasses."""
-        self._load_main_config()
         self._load_translation_config()
+        self._load_main_config()
         self._load_context_config()
     
     def _load_main_config(self) -> None:
@@ -81,8 +81,14 @@ class ConfigManager:
         
         # Ollama settings (used when provider_type == 'ollama' or for local dev)
         ollama_data = self._raw_main.get("ollama", {}) or {}
+        translation_model = self.translation.translation_model
+        if not translation_model:
+            raise ValueError(
+                "defaults.translation_model must be set in config_translation.yaml "
+                "to select the runtime translation model."
+            )
         self._ollama = OllamaConfig(
-            model=ollama_data.get("model", "translategemma"),
+            model=translation_model,
             base_url=ollama_data.get("base_url", "http://localhost:11434"),
             temperature=ollama_data.get("temperature", 0.7),
             streaming=ollama_data.get("streaming", True),
@@ -93,16 +99,15 @@ class ConfigManager:
         if provider_type == "vertex_ai":
             project_id = vertex_data.get("project_id")
             location = vertex_data.get("location")
-            model_id = vertex_data.get("model_id")
-            if not (project_id and location and model_id):
+            if not (project_id and location):
                 raise ValueError(
-                    "vertex_ai.project_id, vertex_ai.location and vertex_ai.model_id "
+                    "vertex_ai.project_id and vertex_ai.location "
                     "must be set in config.yaml when provider_type is 'vertex_ai'."
                 )
             self._vertex_ai = VertexAIConfig(
                 project_id=project_id,
                 location=location,
-                model_id=model_id,
+                model_id=translation_model,
                 embedding_model_id=vertex_data.get("embedding_model_id"),
             )
         
@@ -119,9 +124,14 @@ class ConfigManager:
             raise FileNotFoundError(f"Translation config file not found: {config_file}")
         
         with open(config_file, "r", encoding="utf-8") as f:
-            self._raw_translation = yaml.safe_load(f)
+            self._raw_translation = yaml.safe_load(f) or {}
         
-        defaults = self._raw_translation.get("defaults", {})
+        defaults = self._raw_translation.get("defaults", {}) or {}
+        translation_model = defaults.get("translation_model")
+        if not translation_model:
+            raise ValueError(
+                "defaults.translation_model must be set in config_translation.yaml."
+            )
         self._translation = TranslationConfig(
             source_language=defaults.get("source_language", "English"),
             target_language=defaults.get("target_language", "German"),
@@ -133,21 +143,21 @@ class ConfigManager:
             length_constraints=defaults.get("length_constraints", ""),
             key_phrases_to_preserve=defaults.get("key_phrases_to_preserve", ""),
             instructions=defaults.get("instructions", "None"),
-            translation_model=defaults.get("translation_model"),
+            translation_model=translation_model,
         )
         
-        reflection_data = self._raw_translation.get("reflection", {})
+        reflection_data = self._raw_translation.get("reflection", {}) or {}
         self._reflection = ReflectionConfig(
             enabled=reflection_data.get("enabled", False),
             use_separate_model=reflection_data.get("use_separate_model", False),
-            reflection_model=reflection_data.get("reflection_model", "translategemma"),
+            reflection_model=reflection_data.get("reflection_model", translation_model),
             skip_keywords=reflection_data.get("skip_keywords", [
                 "excellent", "accurate", "no issues", "no changes needed"
             ]),
             debug_logging=reflection_data.get("debug_logging", False),
         )
         
-        prompts_data = self._raw_translation.get("prompts", {})
+        prompts_data = self._raw_translation.get("prompts", {}) or {}
         self._prompts = PromptsConfig(
             system=prompts_data.get("system", ""),
             reflection_system=prompts_data.get("reflection_system", ""),
@@ -161,9 +171,9 @@ class ConfigManager:
             raise FileNotFoundError(f"Context config file not found: {config_file}")
         
         with open(config_file, "r", encoding="utf-8") as f:
-            self._raw_context = yaml.safe_load(f)
+            self._raw_context = yaml.safe_load(f) or {}
         
-        context_data = self._raw_context.get("context_sources", {})
+        context_data = self._raw_context.get("context_sources", {}) or {}
         self._context = ContextConfig(
             enabled=context_data.get("enabled", False),
             embedding_model=context_data.get("embedding_model", "nomic-embed-text"),

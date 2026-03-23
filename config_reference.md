@@ -20,7 +20,6 @@ Example:
 provider_type: "ollama"  # or "vertex_ai"
 
 ollama:
-  model: "translategemma"
   base_url: "http://localhost:11434"
   temperature: 0.7
   streaming: true
@@ -28,7 +27,6 @@ ollama:
 vertex_ai:
   project_id: "YOUR_GCP_PROJECT_ID"
   location: "YOUR_VERTEX_REGION"
-  model_id: "gemini-1.5-flash"
   embedding_model_id: "text-embedding-004"
 
 app:
@@ -43,7 +41,7 @@ app:
   - `"vertex_ai"` – use Google Cloud Vertex AI (`VertexAILLMProvider` + `VertexAIEmbeddingProvider`).
 
 - **`ollama`**
-  - `model` – name of the Ollama model to use, e.g. `translategemma`.
+  - Runtime translation model is sourced from `config_translation.yaml` (`defaults.translation_model`).
   - `base_url` – URL of the Ollama server (default `http://localhost:11434`).
   - `temperature` – sampling temperature for generation.
   - `streaming` – whether streaming responses are enabled by default.
@@ -51,7 +49,7 @@ app:
 - **`vertex_ai`**
   - `project_id` – GCP project ID where Vertex AI is enabled.
   - `location` – Vertex AI region (e.g. `europe-west1`).
-  - `model_id` – generative model ID for translation/reflection.
+  - Runtime translation model is sourced from `config_translation.yaml` (`defaults.translation_model`).
   - `embedding_model_id` – text embedding model ID used by the context index.
 
 - **`app`**
@@ -68,7 +66,8 @@ app:
 
 - `translation_engine/engine.py` uses:
   - `config.provider_type` to decide which LLM and embedding provider to instantiate.
-  - `config.ollama` / `config.vertex_ai` to configure those providers.
+  - `config.ollama` / `config.vertex_ai` for transport/project settings.
+  - `config_translation.yaml -> defaults.translation_model` as the active runtime LLM model for both Ollama and Vertex AI.
 
 - Request-level overrides:
   - The JSON API and HTML frontend can override:
@@ -125,7 +124,7 @@ prompts:
 ### Fields
 
 - **`defaults`** (`TranslationConfig`)
-  - `translation_model` – logical name of the translation model; mainly informational.
+  - `translation_model` – active runtime model ID (required). Used by the translation provider for both Ollama and Vertex AI.
   - `source_language` – default source language name (e.g. `"English"`).
   - `target_language` – default target language name (e.g. `"German"`).
   - `target_audience` – description of the intended reader/audience.
@@ -272,8 +271,8 @@ context_sources:
 
 ## Summary
 
-- Use **`config.yaml`** to choose the backend (Ollama vs Vertex AI) and point to the correct project/region/model IDs for production.
-- Use **`config_translation.yaml`** to define translation defaults, reflection behaviour, and prompt templates.
+- Use **`config.yaml`** to choose the backend (Ollama vs Vertex AI) and set provider connection/project settings.
+- Use **`config_translation.yaml`** to define the runtime translation model, translation defaults, reflection behaviour, and prompt templates.
 - Use **`config_context.yaml`** to configure context indexing behaviour and initial default websites, with the option to create reusable runtime profiles via the API or HTML frontend.
 
 These configuration layers allow you to:
